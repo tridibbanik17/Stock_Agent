@@ -1,0 +1,31 @@
+# Offset cron (*:04, *:19, *:34, *:49) avoids the global Actions :00/:15 rush.
+name: Scheduled report dispatch
+
+on:
+  schedule:
+    - cron: "4,19,34,49 * * * *"
+  workflow_dispatch:
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run cron dispatcher
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          REPORT_FROM_EMAIL: ${{ secrets.REPORT_FROM_EMAIL }}
+          LOG_LEVEL: INFO
+        run: python backend/worker/cron_dispatch.py
