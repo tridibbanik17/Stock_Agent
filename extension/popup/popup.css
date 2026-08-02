@@ -321,6 +321,67 @@ button.add-time-btn {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
+  align-items: start;
+}
+
+.ticker-suggest-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.ticker-suggest {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 4px;
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  max-height: 180px;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #0e151d;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.ticker-suggest[hidden] {
+  display: none !important;
+}
+
+.ticker-suggest-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.ticker-suggest-item:hover,
+.ticker-suggest-item.is-active {
+  background: color-mix(in srgb, var(--accent) 18%, #0e151d);
+}
+
+.ticker-suggest-sym {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.ticker-suggest-meta {
+  font-size: 0.64rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .field {

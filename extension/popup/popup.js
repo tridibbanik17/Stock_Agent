@@ -6,6 +6,7 @@
  */
 
 import { fetchWatchlistSnapshot, subscribeDelivery } from "../lib/api.js";
+import { suggestTickers } from "../lib/tickers.js";
 import {
   MAX_SEND_TIMES,
   MAX_WATCHLIST,
@@ -50,6 +51,7 @@ const $ = (id) => {
 const els = {
   watchlist: /** @type {HTMLUListElement} */ ($("watchlist")),
   tickerInput: /** @type {HTMLInputElement} */ ($("ticker-input")),
+  tickerSuggest: /** @type {HTMLUListElement} */ ($("ticker-suggest")),
   addTicker: /** @type {HTMLButtonElement} */ ($("add-ticker")),
   email: /** @type {HTMLInputElement} */ ($("email-input")),
   days: /** @type {HTMLElement} */ ($("schedule-days")),
@@ -73,6 +75,9 @@ const els = {
 
 /** @type {Record<string, QuoteSnapshot>} */
 let quoteCache = {};
+
+/** Highlighted row index in ticker suggestions (-1 = none). */
+let suggestActiveIndex = -1;
 
 /**
  * @typedef {{
@@ -127,12 +132,51 @@ function bindEvents() {
   });
 
   els.tickerInput.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (!els.tickerSuggest.hidden) {
+        event.preventDefault();
+        moveSuggestHighlight(event.key === "ArrowDown" ? 1 : -1);
+        return;
+      }
+    }
+    if (event.key === "Escape") {
+      hideTickerSuggest();
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
+      const picked = getActiveSuggestSymbol();
+      if (picked) {
+        els.tickerInput.value = picked;
+        hideTickerSuggest();
+      }
       void onAddTicker();
     }
   });
-  els.tickerInput.addEventListener("input", () => clearStatus("watchlist"));
+  els.tickerInput.addEventListener("input", () => {
+    clearStatus("watchlist");
+    void updateTickerSuggest();
+  });
+  els.tickerInput.addEventListener("focus", () => {
+    void updateTickerSuggest();
+  });
+  els.tickerInput.addEventListener("blur", () => {
+    // Allow click on a suggestion before hiding.
+    window.setTimeout(() => hideTickerSuggest(), 150);
+  });
+
+  els.tickerSuggest.addEventListener("mousedown", (event) => {
+    const btn = /** @type {HTMLElement} */ (event.target).closest(
+      "[data-symbol]"
+    );
+    if (!(btn instanceof HTMLElement)) return;
+    event.preventDefault();
+    const symbol = btn.dataset.symbol || "";
+    if (!symbol) return;
+    els.tickerInput.value = symbol;
+    hideTickerSuggest();
+    void onAddTicker();
+  });
 
   els.days.addEventListener("click", (event) => {
     const target = /** @type {HTMLElement} */ (event.target);
@@ -817,6 +861,85 @@ async function refreshQuotes(opts = {}) {
   } finally {
     els.refreshQuotes.disabled = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Ticker autocomplete (static NASDAQ/NYSE/AMEX + major TSX list)
+// ---------------------------------------------------------------------------
+
+function hideTickerSuggest() {
+  els.tickerSuggest.hidden = true;
+  els.tickerSuggest.innerHTML = "";
+  suggestActiveIndex = -1;
+  els.tickerInput.setAttribute("aria-expanded", "false");
+}
+
+/** @returns {string} */
+function getActiveSuggestSymbol() {
+  const items = els.tickerSuggest.querySelectorAll("[data-symbol]");
+  if (suggestActiveIndex < 0 || suggestActiveIndex >= items.length) return "";
+  return /** @type {HTMLElement} */ (items[suggestActiveIndex]).dataset.symbol || "";
+}
+
+/** @param {number} delta */
+function moveSuggestHighlight(delta) {
+  const items = [...els.tickerSuggest.querySelectorAll(".ticker-suggest-item")];
+  if (!items.length) return;
+  suggestActiveIndex = (suggestActiveIndex + delta + items.length) % items.length;
+  items.forEach((el, i) => {
+    el.classList.toggle("is-active", i === suggestActiveIndex);
+  });
+  items[suggestActiveIndex]?.scrollIntoView({ block: "nearest" });
+}
+
+async function updateTickerSuggest() {
+  const query = els.tickerInput.value.trim();
+  if (!query) {
+    hideTickerSuggest();
+    return;
+  }
+
+  let rows = [];
+  try {
+    rows = await suggestTickers(query, 12);
+  } catch (error) {
+    console.warn("[Stock Agent] ticker suggest failed", error);
+    hideTickerSuggest();
+    return;
+  }
+
+  if (!rows.length) {
+    hideTickerSuggest();
+    return;
+  }
+
+  els.tickerSuggest.innerHTML = "";
+  suggestActiveIndex = -1;
+  for (const row of rows) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ticker-suggest-item";
+    btn.dataset.symbol = row.symbol;
+
+    const sym = document.createElement("span");
+    sym.className = "ticker-suggest-sym";
+    sym.textContent = row.symbol;
+
+    const meta = document.createElement("span");
+    meta.className = "ticker-suggest-meta";
+    const label = row.name && row.name !== row.symbol ? row.name : "";
+    meta.textContent = [label, row.exchange].filter(Boolean).join(" · ");
+
+    btn.append(sym, meta);
+    li.append(btn);
+    els.tickerSuggest.appendChild(li);
+  }
+
+  els.tickerSuggest.hidden = false;
+  els.tickerInput.setAttribute("aria-expanded", "true");
 }
 
 // ---------------------------------------------------------------------------

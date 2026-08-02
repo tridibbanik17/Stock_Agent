@@ -35,15 +35,27 @@
         </div>
 
         <div class="add-row">
-          <input
-            id="ticker-input"
-            type="text"
-            maxlength="12"
-            placeholder="Add ticker (e.g. NVDA)"
-            autocomplete="off"
-            spellcheck="false"
-            aria-label="Ticker symbol"
-          />
+          <div class="ticker-suggest-wrap">
+            <input
+              id="ticker-input"
+              type="text"
+              maxlength="12"
+              placeholder="Add ticker (e.g. NVDA)"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Ticker symbol"
+              aria-autocomplete="list"
+              aria-controls="ticker-suggest"
+              aria-expanded="false"
+            />
+            <ul
+              id="ticker-suggest"
+              class="ticker-suggest"
+              role="listbox"
+              aria-label="Ticker suggestions"
+              hidden
+            ></ul>
+          </div>
           <button type="button" id="add-ticker">Add Ticker</button>
         </div>
 
