@@ -1,0 +1,98 @@
+# Auto-bump extension/manifest.json on pushes to main.
+# Patch bump when extension/** changes (skips the bump commit itself to avoid loops).
+# For minor/major: Actions → "Bump extension version" → Run workflow → choose level.
+name: Bump extension version
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "extension/**"
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Semver level"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    # Avoid infinite loop: do not re-bump our own bump commits.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      !startsWith(github.event.head_commit.message, 'chore: bump extension')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Bump version
+        id: bump
+        env:
+          LEVEL: ${{ github.event_name == 'workflow_dispatch' && inputs.level || 'patch' }}
+        run: |
+          python3 << 'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          level = os.environ.get("LEVEL", "patch").strip().lower()
+          path = Path("extension/manifest.json")
+          text = path.read_text(encoding="utf-8")
+          match = re.search(r'"version"\s*:\s*"(?P<ver>\d+\.\d+\.\d+)"', text)
+          if not match:
+              raise SystemExit("Could not find version in extension/manifest.json")
+
+          major, minor, patch = (int(p) for p in match.group("ver").split("."))
+          old = f"{major}.{minor}.{patch}"
+
+          if level == "major":
+              major, minor, patch = major + 1, 0, 0
+          elif level == "minor":
+              minor, patch = minor + 1, 0
+          else:
+              patch += 1
+
+          new = f"{major}.{minor}.{patch}"
+          updated = re.sub(
+              r'"version"\s*:\s*"\d+\.\d+\.\d+"',
+              f'"version": "{new}"',
+              text,
+              count=1,
+          )
+          path.write_text(updated, encoding="utf-8", newline="\n")
+
+          out = Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"old_version={old}\n")
+              fh.write(f"new_version={new}\n")
+              fh.write(f"level={level}\n")
+          print(f"Stock Agent version: {old} -> {new} ({level})")
+          PY
+
+      - name: Commit and push
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.new_version }}
+          LEVEL: ${{ steps.bump.outputs.level }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extension/manifest.json
+          if git diff --staged --quiet; then
+            echo "No version change to commit."
+            exit 0
+          fi
+          git commit -m "chore: bump extension to ${NEW_VERSION} (${LEVEL})"
+          git push

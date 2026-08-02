@@ -1,10 +1,13 @@
 <#
 .SYNOPSIS
-  Bump extension/manifest.json semver (patch | minor | major).
+  Optional local bump for extension/manifest.json (patch | minor | major).
+
+  Prefer GitHub Actions on main:
+    - Auto patch when extension/** is pushed
+    - Manual minor/major: Actions → "Bump extension version" → Run workflow
 
 .EXAMPLE
   .\scripts\bump-version.ps1
-  .\scripts\bump-version.ps1 patch
   .\scripts\bump-version.ps1 minor
   .\scripts\bump-version.ps1 major
 #>
