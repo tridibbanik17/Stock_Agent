@@ -30,6 +30,10 @@ Privacy-first Chrome extension for retail traders: keep a watchlist, see live gr
 | Email | Resend (dry-run if no API key) |
 | Cron | GitHub Actions every ~15 minutes |
 
+## Data flow and field reference
+
+How quotes, grades, and email fields are produced (yfinance vs our grader vs Supabase): see **[docs/DATA_FLOW.md](docs/DATA_FLOW.md)**.
+
 ## Repository layout
 
 ```
