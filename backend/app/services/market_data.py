@@ -12,33 +12,88 @@ import yfinance as yf
 
 logger = logging.getLogger("stock_agent.market")
 
-# Rough asset-class hints for context-aware grading (not exhaustive).
-CRYPTO_PROXIES = {"MSTR", "MARA", "RIOT", "CLSK", "COIN", "HUT", "BITF"}
-CAPITAL_INTENSIVE = {"BCE", "BCE.TO", "T", "VZ", "TLK", "AMT", "CCI", "SBAC"}
-GROWTH_TECH = {
-    "NVDA",
-    "TSLA",
-    "PLTR",
-    "SHOP",
-    "SHOP.TO",
-    "SPOT",
-    "AI",
-    "SNOW",
-    "CRWD",
-    "DDOG",
-    "NET",
-}
+# Keyword / sector maps for yfinance info → grading buckets.
+_CRYPTO_KEYS = (
+    "bitcoin",
+    "cryptocurrency",
+    "crypto mining",
+    "crypto miner",
+    "digital currency",
+    "digital asset",
+    "crypto asset",
+    "blockchain mining",
+)
+_CAPITAL_SECTORS = frozenset({"utilities", "real estate"})
+_CAPITAL_INDUSTRY_KEYS = (
+    "telecom",
+    "telephone",
+    "wireless",
+    "reit",
+    "utilities",
+    "electric utilities",
+    "diversified telecommunication",
+    "integrated telecommunication",
+    "tower",
+    "infrastructure reit",
+    "specialty reit",
+)
+_GROWTH_INDUSTRY_KEYS = (
+    "software",
+    "semiconductor",
+    "information technology services",
+    "internet content",
+    "internet retail",
+    "computer hardware",
+    "consumer electronics",
+    "electronic components",
+    "communication equipment",
+    "cloud",
+    "cybersecurity",
+    "security software",
+    "auto manufacturers",
+    "scientific & technical instruments",
+)
 
 
-def classify_asset(ticker: str) -> str:
-    symbol = ticker.upper()
-    base = symbol.split(".")[0]
-    if symbol in CRYPTO_PROXIES or base in CRYPTO_PROXIES:
+def classify_asset_from_info(info: dict[str, Any] | None, ticker: str = "") -> str:
+    """
+    Derive grading asset class from yfinance metadata (not a hardcoded ticker list).
+    Returns: crypto_proxy | capital_intensive | growth_tech | standard
+    """
+    info = info or {}
+    quote_type = str(info.get("quoteType") or "").strip().upper()
+    sector = str(info.get("sector") or "").strip().lower()
+    industry = str(info.get("industry") or "").strip().lower()
+    summary = str(
+        info.get("longBusinessSummary")
+        or info.get("longName")
+        or info.get("shortName")
+        or ""
+    ).lower()
+    blob = f"{sector} {industry} {summary}"
+
+    if quote_type == "CRYPTOCURRENCY":
         return "crypto_proxy"
-    if symbol in CAPITAL_INTENSIVE or base in CAPITAL_INTENSIVE:
+    if any(k in blob for k in _CRYPTO_KEYS) or "crypto" in industry:
+        return "crypto_proxy"
+
+    if sector in _CAPITAL_SECTORS or any(k in industry for k in _CAPITAL_INDUSTRY_KEYS):
         return "capital_intensive"
-    if symbol in GROWTH_TECH or base in GROWTH_TECH:
+    if sector == "communication services" and any(
+        k in industry for k in ("telecom", "telephone", "wireless")
+    ):
+        return "capital_intensive"
+
+    if sector == "technology" or any(k in industry for k in _GROWTH_INDUSTRY_KEYS):
         return "growth_tech"
+
+    return "standard"
+
+
+def classify_asset(ticker: str, info: dict[str, Any] | None = None) -> str:
+    """Backward-compatible wrapper; prefer classify_asset_from_info when info exists."""
+    if info:
+        return classify_asset_from_info(info, ticker)
     return "standard"
 
 
@@ -88,11 +143,12 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
     """Fetch price + core metrics for one symbol. Never touches portfolio lots."""
     symbol = ticker.strip().upper()
     as_of = datetime.now(timezone.utc).isoformat()
-    asset_class = classify_asset(symbol)
+    asset_class = "standard"
 
     try:
         stock = yf.Ticker(symbol)
         info = stock.info or {}
+        asset_class = classify_asset_from_info(info, symbol)
         price = _safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
         currency = str(info.get("currency") or "USD")
         peg = _safe_float(info.get("pegRatio"))
@@ -151,6 +207,8 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             "sma200": sma_200,
             "rsi": rsi,
             "assetClass": asset_class,
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
             "asOf": as_of,
             "error": None,
         }
@@ -167,6 +225,8 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             "sma200": None,
             "rsi": None,
             "assetClass": asset_class,
+            "sector": None,
+            "industry": None,
             "asOf": as_of,
             "error": str(exc),
         }
