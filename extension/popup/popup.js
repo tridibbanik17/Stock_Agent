@@ -680,8 +680,8 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     shares.min = "0";
     shares.step = "any";
     shares.placeholder = "0";
-    shares.title = "Shares owned (private)";
-    shares.setAttribute("aria-label", `${ticker} shares owned`);
+    shares.title = "Number of shares owned (private)";
+    shares.setAttribute("aria-label", `${ticker} number of shares owned`);
     shares.dataset.ticker = ticker;
     shares.dataset.field = "shares";
     shares.value =

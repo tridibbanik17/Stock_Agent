@@ -130,6 +130,12 @@ h2 {
   line-height: 1.4;
 }
 
+.lots-hint {
+  margin-top: -2px;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
 /* Custom delivery schedule builder */
 .schedule-builder {
   display: grid;
@@ -510,11 +516,12 @@ button.remove {
   grid-template-columns: 58px 1fr 1fr 58px;
   gap: 6px;
   padding: 0 4px;
-  font-size: 0.64rem;
+  font-size: 0.58rem;
   color: #6f8092;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   font-weight: 650;
+  line-height: 1.25;
 }
 
 .list-head[hidden] {
