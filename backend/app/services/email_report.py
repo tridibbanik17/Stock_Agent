@@ -11,6 +11,14 @@ import httpx
 logger = logging.getLogger("stock_agent.email")
 
 
+def _plain_ticker(ticker: str) -> str:
+    """
+    Stop Gmail/Outlook from auto-linking symbols like BCE.TO as https://bce.to.
+    Insert a zero-width space after each dot (display looks the same).
+    """
+    return str(ticker or "").replace(".", ".\u200b")
+
+
 def _metric_glossary() -> list[str]:
     """Plain-language guide aligned with Stock Agent grading rules."""
     return [
@@ -54,7 +62,7 @@ def format_report_text(email: str, quotes: list[dict[str, Any]]) -> str:
         "",
     ]
     for q in quotes:
-        ticker = q.get("ticker", "?")
+        ticker = _plain_ticker(q.get("ticker", "?"))
         price = q.get("price")
         currency = q.get("currency") or "USD"
         price_s = f"{price:.2f} {currency}" if isinstance(price, (int, float)) else "n/a"
