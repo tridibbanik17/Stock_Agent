@@ -87,9 +87,21 @@ def send_report_email(to_email: str, subject: str, body: str) -> bool:
                 response.status_code,
                 response.text[:500],
             )
+            if os.getenv("GITHUB_ACTIONS"):
+                print(
+                    f"::error::Resend HTTP {response.status_code}: {response.text[:300]}",
+                    flush=True,
+                )
             return False
-        logger.info("Resend OK to=%s id=%s", to_email, response.json().get("id"))
+        data = {}
+        try:
+            data = response.json()
+        except Exception:
+            pass
+        logger.info("Resend OK to=%s id=%s", to_email, data.get("id"))
         return True
-    except Exception:
+    except Exception as exc:
         logger.exception("Resend request failed for %s", to_email)
+        if os.getenv("GITHUB_ACTIONS"):
+            print(f"::error::Resend request exception: {exc}", flush=True)
         return False

@@ -108,16 +108,33 @@ def dispatch_user(row: dict) -> bool:
     email = row.get("email")
     watchlist = list(row.get("watchlist") or [])
     if not email or not watchlist:
-        logger.warning("Skipping user id=%s — missing email or watchlist", row.get("id"))
+        logger.warning("Skipping user id=%s - missing email or watchlist", row.get("id"))
         return False
 
     logger.info("Dispatching report to %s (%d tickers)", email, len(watchlist))
     metrics = analyze_watchlist(watchlist)
-    news_flags = fetch_news_for_watchlist(watchlist)
+    # GoogleNews is flaky on CI / datacenter IPs; skip unless explicitly enabled.
+    skip_news = os.getenv("GITHUB_ACTIONS") or os.getenv("STOCK_AGENT_SKIP_NEWS", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    news_flags: dict[str, list[str]] = {}
+    if not skip_news:
+        try:
+            news_flags = fetch_news_for_watchlist(watchlist)
+        except Exception:
+            logger.exception("News fetch failed; continuing without news flags")
     quotes = attach_grades(metrics, news_flags)
     body = format_report_text(email, quotes)
-    subject = f"Stock Agent Report — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
-    return send_report_email(email, subject, body)
+    subject = f"Stock Agent Report - {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
+    ok = send_report_email(email, subject, body)
+    if not ok and os.getenv("GITHUB_ACTIONS"):
+        print(
+            f"::error::Email send failed for {email}. Check RESEND_API_KEY and REPORT_FROM_EMAIL secrets.",
+            flush=True,
+        )
+    return ok
 
 
 def main() -> int:
