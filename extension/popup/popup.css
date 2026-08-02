@@ -516,10 +516,10 @@ button.remove {
   grid-template-columns: 58px 1fr 1fr 58px;
   gap: 6px;
   padding: 0 4px;
-  font-size: 0.58rem;
+  font-size: 0.64rem;
   color: #6f8092;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   font-weight: 650;
   line-height: 1.25;
 }
