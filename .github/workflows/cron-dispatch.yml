@@ -1,4 +1,11 @@
 # Offset cron (*:04, *:19, *:34, *:49) avoids the global Actions :00/:15 rush.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_URL
+#   SUPABASE_SECRET_KEY   (or SUPABASE_SERVICE_ROLE_KEY)
+# Optional:
+#   RESEND_API_KEY
+#   REPORT_FROM_EMAIL
 name: Scheduled report dispatch
 
 on:
@@ -21,11 +28,29 @@ jobs:
       - name: Install dependencies
         run: pip install -r backend/requirements.txt
 
+      - name: Verify Supabase secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::error::Missing secret SUPABASE_URL. Add it under Repo → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          if [ -z "$SUPABASE_SECRET_KEY" ] && [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::Missing secret SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY). Add your Supabase server/secret key."
+            exit 1
+          fi
+          echo "Supabase secrets present."
+
       - name: Run cron dispatcher
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           REPORT_FROM_EMAIL: ${{ secrets.REPORT_FROM_EMAIL }}
           LOG_LEVEL: INFO
+          GITHUB_ACTIONS: "true"
         run: python backend/worker/cron_dispatch.py

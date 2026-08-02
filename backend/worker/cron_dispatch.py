@@ -114,6 +114,13 @@ def main() -> int:
 
     try:
         users = load_enabled_users()
+    except RuntimeError as exc:
+        # Missing/invalid env — surface a clear CI annotation.
+        msg = str(exc)
+        if os.getenv("GITHUB_ACTIONS"):
+            print(f"::error::Supabase config error: {msg}", flush=True)
+        logger.error("Failed to load users from Supabase: %s", msg)
+        return 1
     except Exception:
         logger.exception("Failed to load users from Supabase")
         return 1
