@@ -49,6 +49,13 @@ def user_to_schedule(row: dict) -> dict:
 
 
 def schedule_matches(schedule: dict, now_utc: datetime | None = None) -> bool:
+    """
+    True when local time is within 15 minutes after a preferred send time.
+    Cron ticks every ~15 minutes (UTC :04/:19/:34/:49), so we must allow
+    the window to cross the hour boundary (e.g. 10:52 → still match at 11:04).
+    """
+    from datetime import timedelta
+
     now_utc = now_utc or datetime.now(timezone.utc)
     tz_name = schedule.get("timezone") or "UTC"
     try:
@@ -77,9 +84,14 @@ def schedule_matches(schedule: dict, now_utc: datetime | None = None) -> bool:
             target_hour, target_minute = int(hour_s), int(minute_s)
         except ValueError:
             continue
-        if local_now.hour != target_hour:
-            continue
-        if target_minute <= local_now.minute < target_minute + 15:
+        preferred = local_now.replace(
+            hour=target_hour,
+            minute=target_minute,
+            second=0,
+            microsecond=0,
+        )
+        delta = local_now - preferred
+        if timedelta(0) <= delta < timedelta(minutes=15):
             return True
     return False
 
