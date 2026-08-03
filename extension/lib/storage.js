@@ -25,7 +25,8 @@
  * }} ScheduleConfig */
 
 /** Soft cap so a single user cannot enqueue an unbounded fan-out. */
-export const MAX_SEND_TIMES = 8;
+/** Max distinct send times per day (× selected days ≤ 14 emails/week). */
+export const MAX_SEND_TIMES = 2;
 /** @typedef {{ email: string, schedule: ScheduleConfig, enabled: boolean }} DeliveryPrefs */
 /** @typedef {{
  *   holdings: HoldingsMap,

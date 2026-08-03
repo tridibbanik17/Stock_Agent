@@ -92,7 +92,7 @@ comment on column public.users.watchlist is
   'Ticker symbols synchronized from the extension (max 25).';
 
 comment on column public.users.preferred_hours is
-  'Local send times HH:MM; multiple values = multi-send per day.';
+  'Local send times HH:MM; at most 2 per day (× days ≤ 14 emails/week).';
 
 comment on column public.users.last_sent_at is
   'UTC timestamp of last successful cron email; used to skip duplicate sends in the same preferred-hour window.';

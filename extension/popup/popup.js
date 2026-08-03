@@ -538,7 +538,7 @@ function onAddSendTime() {
   const times = readTimesFromDom();
   if (times.length >= MAX_SEND_TIMES) {
     setStatus(
-      `You can schedule up to ${MAX_SEND_TIMES} send times per day.`,
+      `You can schedule up to ${MAX_SEND_TIMES} send times per day (max 14 per week).`,
       "warn",
       "subscribe",
       "error"

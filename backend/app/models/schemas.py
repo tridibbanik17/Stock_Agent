@@ -12,7 +12,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 MAX_WATCHLIST = 25
-MAX_SEND_TIMES = 8
+# Max distinct HH:MM slots per day (× up to 7 days ⇒ ≤ 14 emails/week).
+MAX_SEND_TIMES = 2
 TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,11}$")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
@@ -44,8 +45,9 @@ class ScheduleConfig(BaseModel):
     )
     times: list[str] = Field(
         default_factory=lambda: ["09:00"],
-        description="24h HH:MM send times (not the literal word 'string')",
+        description="24h HH:MM send times (max 2 per day; × days ≤ 14/week)",
         examples=[["09:00", "17:00"]],
+        max_length=MAX_SEND_TIMES,
     )
     timezone: str = Field(default="UTC", examples=["America/New_York"])
 
@@ -66,7 +68,12 @@ class ScheduleConfig(BaseModel):
             if not TIME_RE.match(text):
                 raise ValueError(f"invalid time '{raw}' — expected HH:MM (24h)")
             cleaned.append(text)
-        cleaned = sorted(set(cleaned))[:MAX_SEND_TIMES]
+        cleaned = sorted(set(cleaned))
+        if len(cleaned) > MAX_SEND_TIMES:
+            raise ValueError(
+                f"times capped at {MAX_SEND_TIMES} per day "
+                f"(max {MAX_SEND_TIMES * 7} emails per week)"
+            )
         if not cleaned:
             raise ValueError("times must include at least one HH:MM value")
         return cleaned
