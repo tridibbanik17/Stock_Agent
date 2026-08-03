@@ -28,7 +28,7 @@ Privacy-first Chrome extension for retail traders: keep a watchlist, see live gr
 | Database | Supabase (PostgreSQL), RLS recommended |
 | Market data | yfinance |
 | Email | Resend (dry-run if no API key) |
-| Cron | GitHub Actions every ~15 minutes |
+| Cron | GitHub Actions every ~5 minutes → hosted `/api/internal/dispatch-due` |
 | Hosted API | Render (Docker) — see [docs/DEPLOY.md](docs/DEPLOY.md) |
 
 ## Data flow and field reference
@@ -86,17 +86,16 @@ python backend/worker/cron_dispatch.py
 
 ## GitHub Actions secrets
 
-For scheduled email dispatch, add under **Settings → Secrets and variables → Actions**:
+For hybrid B wake-ups, add under **Settings → Secrets and variables → Actions**:
 
 | Secret | Purpose |
 |--------|---------|
-| `SUPABASE_URL` | e.g. `https://YOUR_REF.supabase.co` |
-| `SUPABASE_SECRET_KEY` | Supabase secret / service_role key |
-| `RESEND_API_KEY` | Resend sending key (`re_…`) |
-| `REPORT_FROM_EMAIL` | e.g. `Stock Agent <onboarding@resend.dev>` |
-| `PUBLIC_API_BASE_URL` | Public API origin for email unsubscribe links (optional locally) |
+| `PUBLIC_API_BASE_URL` | Render HTTPS origin, e.g. `https://stock-agent-api-m06f.onrender.com` (no trailing slash) |
+| `DISPATCH_SECRET` | Same value as Render env `DISPATCH_SECRET` |
 
-Workflow: `.github/workflows/cron-dispatch.yml`  
+Supabase / Resend stay on **Render** only (the API does the real send).
+
+Workflow: `.github/workflows/cron-dispatch.yml` (every 5 minutes + manual run)  
 Manual run: **Actions → Scheduled report dispatch → Run workflow**
 
 ## Extension versioning

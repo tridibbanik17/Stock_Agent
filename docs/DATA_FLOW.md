@@ -10,7 +10,7 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 - **Subscribe** is email-keyed upsert: Save & Subscribe overwrites that address’s watchlist and schedule.
 - **Delivery audit:** each cron send writes a `delivery_logs` row (`success` / `failure` / `dry_run`, Resend id, truncated error) — query in Supabase instead of digging through Actions logs.
 - **HTML email:** cron always sends a full HTML report (plus plain-text fallback) on schedule.
-- **Hybrid B dispatch:** `POST /api/internal/dispatch-due` (header `X-Dispatch-Secret`) sends users in the early window (`preferred − DISPATCH_EARLY_MINUTES` … `preferred`) or overdue catch-up (up to `DISPATCH_LATE_MINUTES`). Preferred time is a deadline; `last_sent_at` is stamped at the slot instant for dedupe.
+- **Hybrid B dispatch:** GitHub Actions every 5 minutes `POST`s `/api/internal/dispatch-due` (header `X-Dispatch-Secret`). The API sends users in the early window (`preferred − DISPATCH_EARLY_MINUTES` … `preferred`) or overdue catch-up (up to `DISPATCH_LATE_MINUTES`). Preferred time is a deadline; `last_sent_at` is stamped at the slot instant for dedupe.
 - **Hosted API:** production FastAPI via Docker / Render (`docs/DEPLOY.md`). Extension switches with `USE_LOCAL_API` in `extension/lib/config.js`.
 - **Cron shared quote cache:** each tick unions matched users’ tickers, fetches/grades each symbol once, then reuses those quotes for every email (avoids N× yfinance hits when watchlists overlap).
 - **Cron fan-out:** matched users are emailed in parallel (`CRON_DISPATCH_WORKERS`, default 8) so one slow Resend call does not block the rest of the tick. News uses Yahoo RSS (CI-safe) with a short disk cache; set `STOCK_AGENT_SKIP_NEWS=1` to disable.

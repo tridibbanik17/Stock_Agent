@@ -27,7 +27,10 @@ so email unsubscribe links point at the **same** public API.
    - Set `PROD_API_BASE` to that HTTPS URL
    - Set `USE_LOCAL_API = false`
    - Reload the unpacked extension at `chrome://extensions`
-7. GitHub Actions → secret `PUBLIC_API_BASE_URL` = same HTTPS URL (unsubscribe links in emails).
+7. GitHub Actions → secrets:
+   - `PUBLIC_API_BASE_URL` = same HTTPS URL (no trailing slash)
+   - `DISPATCH_SECRET` = same value as Render `DISPATCH_SECRET`
+   The workflow pings `POST /api/internal/dispatch-due` every 5 minutes (hybrid B).
 
 **Free plan note:** Render spins down idle free services. The first request after sleep can take ~30–60s; the extension error message mentions this.
 

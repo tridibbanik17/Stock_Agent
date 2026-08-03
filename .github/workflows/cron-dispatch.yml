@@ -1,60 +1,42 @@
-# Offset cron (*:04, *:19, *:34, *:49) avoids the global Actions :00/:15 rush.
+# Hybrid B wake-up: ping the hosted API every 5 minutes.
+# The API runs early/overdue matching + Resend (see POST /api/internal/dispatch-due).
 #
 # Required repo secrets (Settings → Secrets and variables → Actions):
-#   SUPABASE_URL
-#   SUPABASE_SECRET_KEY   (or SUPABASE_SERVICE_ROLE_KEY)
-# Optional:
-#   RESEND_API_KEY
-#   REPORT_FROM_EMAIL
-#   PUBLIC_API_BASE_URL   (public FastAPI origin for email unsubscribe links)
+#   PUBLIC_API_BASE_URL   e.g. https://stock-agent-api-m06f.onrender.com  (no trailing slash)
+#   DISPATCH_SECRET       same value as Render env DISPATCH_SECRET
+#
+# Supabase / Resend secrets are no longer needed here — they live on Render.
 name: Scheduled report dispatch
 
 on:
   schedule:
-    - cron: "4,19,34,49 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
   dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install -r backend/requirements.txt
-
-      - name: Verify Supabase secrets
+      - name: Ping dispatch-due
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          if [ -z "$SUPABASE_URL" ]; then
-            echo "::error::Missing secret SUPABASE_URL. Add it under Repo → Settings → Secrets and variables → Actions."
-            exit 1
-          fi
-          if [ -z "$SUPABASE_SECRET_KEY" ] && [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "::error::Missing secret SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY). Add your Supabase server/secret key."
-            exit 1
-          fi
-          echo "Supabase secrets present."
-
-      - name: Run cron dispatcher
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          REPORT_FROM_EMAIL: ${{ secrets.REPORT_FROM_EMAIL }}
           PUBLIC_API_BASE_URL: ${{ secrets.PUBLIC_API_BASE_URL }}
-          CRON_DISPATCH_WORKERS: "8"
-          # Yahoo RSS news is CI-safe; set STOCK_AGENT_SKIP_NEWS=true to disable.
-          LOG_LEVEL: INFO
-          GITHUB_ACTIONS: "true"
-        run: python backend/worker/cron_dispatch.py
+          DISPATCH_SECRET: ${{ secrets.DISPATCH_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PUBLIC_API_BASE_URL:-}" ]; then
+            echo "::error::Missing secret PUBLIC_API_BASE_URL (Render HTTPS origin, no trailing slash)."
+            exit 1
+          fi
+          if [ -z "${DISPATCH_SECRET:-}" ]; then
+            echo "::error::Missing secret DISPATCH_SECRET (must match Render DISPATCH_SECRET)."
+            exit 1
+          fi
+          BASE="${PUBLIC_API_BASE_URL%/}"
+          echo "POST ${BASE}/api/internal/dispatch-due"
+          # -f fails on HTTP 4xx/5xx; --retry helps free-tier cold starts
+          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors \
+            -X POST "${BASE}/api/internal/dispatch-due" \
+            -H "X-Dispatch-Secret: ${DISPATCH_SECRET}" \
+            -H "Accept: application/json" \
+            -w "\nHTTP %{http_code}\n"
