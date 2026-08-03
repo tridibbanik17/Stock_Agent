@@ -29,12 +29,31 @@ class SendResult:
         return "success" if self.ok else "failure"
 
 
-def _plain_ticker(ticker: str) -> str:
+def _note_lines_for_email(q: dict[str, Any]) -> list[tuple[str, str | None]]:
     """
-    Stop Gmail/Outlook from auto-linking symbols like BCE.TO as https://bce.to.
-    Insert a zero-width space after each dot (display looks the same).
+    Return (text, optional_url) for notes.
+    News risk lines get a source URL when grading attached newsRisks.
     """
-    return str(ticker or "").replace(".", ".\u200b")
+    notes = list(q.get("notes") or [])
+    risks = q.get("newsRisks") or []
+    url_by_title: dict[str, str] = {}
+    for item in risks:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        url = str(item.get("url") or "").strip()
+        if title and url.startswith("http"):
+            url_by_title[title] = url
+
+    out: list[tuple[str, str | None]] = []
+    for note in notes:
+        text = str(note)
+        link: str | None = None
+        if text.startswith("News risk: "):
+            headline = text[len("News risk: ") :].strip()
+            link = url_by_title.get(headline)
+        out.append((text, link))
+    return out
 
 
 def build_unsubscribe_url(token: str, base_url: str | None = None) -> str:
@@ -109,8 +128,12 @@ def format_report_text(
         notes = q.get("notes") or []
         if notes:
             lines.append("  - Notes:")
-            for note in notes:
-                lines.append(f"     - {note}")
+            for text, link in _note_lines_for_email(q):
+                if link:
+                    lines.append(f"     - {text}")
+                    lines.append(f"       Read: {link}")
+                else:
+                    lines.append(f"     - {text}")
         if q.get("error"):
             lines.append(f"  - Data warning: {q['error']}")
         lines.append("")
@@ -251,9 +274,18 @@ def format_report_html(
         notes = q.get("notes") or []
         notes_html = ""
         if notes and not no_change_digest:
+            items_html = []
+            for text, link in _note_lines_for_email(q)[:4]:
+                if link:
+                    items_html.append(
+                        f"<li>{_esc(text)} "
+                        f"<a href='{_esc(link)}' style='color:#2563eb;'>Read</a></li>"
+                    )
+                else:
+                    items_html.append(f"<li>{_esc(text)}</li>")
             notes_html = (
                 "<ul style='margin:6px 0 0;padding-left:18px;color:#475569;font-size:12px;'>"
-                + "".join(f"<li>{_esc(n)}</li>" for n in notes[:4])
+                + "".join(items_html)
                 + "</ul>"
             )
         metrics = ""

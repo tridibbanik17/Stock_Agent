@@ -17,7 +17,27 @@ def _parse_roe_pct(roe_list: list[str]) -> list[float]:
     return values
 
 
-def grade_metrics(metrics: dict[str, Any], news_flags: list[str] | None = None) -> dict[str, Any]:
+def _normalize_news_items(
+    news_flags: list[Any] | None,
+) -> list[dict[str, str]]:
+    """Accept legacy title strings or {title, url} dicts."""
+    out: list[dict[str, str]] = []
+    for item in news_flags or []:
+        if isinstance(item, dict):
+            title = str(item.get("title") or "").strip()
+            url = str(item.get("url") or item.get("link") or "").strip()
+            if title:
+                out.append({"title": title[:180], "url": url[:500]})
+        else:
+            title = str(item).strip()
+            if title:
+                out.append({"title": title[:180], "url": ""})
+        if len(out) >= 5:
+            break
+    return out
+
+
+def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) -> dict[str, Any]:
     """
     Score 0–5 with asset-class weighting.
     Returns grade label, score, notes, verdict line for email/UI.
@@ -28,7 +48,7 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[str] | None = None) 
     above_sma = metrics.get("aboveSma200")
     rsi = metrics.get("rsi")
     roes = _parse_roe_pct(metrics.get("roeTrend") or [])
-    news_flags = news_flags or []
+    news_items = _normalize_news_items(news_flags)
 
     score = 0
     notes: list[str] = []
@@ -96,11 +116,10 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[str] | None = None) 
             notes.append("RSI is overbought - avoid chasing; consider trimming.")
 
     # --- Qualitative news risk (existential headlines) ---
-    critical = [f for f in news_flags if f]
-    if critical:
+    if news_items:
         score = max(0, score - 2)
-        for flag in critical[:3]:
-            notes.append(f"News risk: {flag}")
+        for item in news_items[:3]:
+            notes.append(f"News risk: {item['title']}")
 
     if score >= 4:
         grade = "STRONG_BUY"
@@ -122,12 +141,13 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[str] | None = None) 
         "verdict": verdict,
         "notes": notes,
         "assetClass": asset,
+        "newsRisks": news_items[:3],
     }
 
 
 def attach_grades(
     metrics_list: list[dict[str, Any]],
-    news_by_ticker: dict[str, list[str]] | None = None,
+    news_by_ticker: dict[str, list[Any]] | None = None,
 ) -> list[dict[str, Any]]:
     news_by_ticker = news_by_ticker or {}
     graded = []

@@ -101,7 +101,7 @@ def _cache_path(ticker: str) -> Path:
     return _cache_dir() / f"{safe}.json"
 
 
-def _read_cache(ticker: str) -> list[str] | None:
+def _read_cache(ticker: str) -> list[dict[str, str]] | None:
     path = _cache_path(ticker)
     try:
         if not path.is_file():
@@ -111,14 +111,28 @@ def _read_cache(ticker: str) -> list[str] | None:
         if time.time() - ts > _cache_ttl_seconds():
             return None
         flags = payload.get("flags")
-        if isinstance(flags, list):
-            return [str(x)[:180] for x in flags if str(x).strip()][:5]
+        if not isinstance(flags, list):
+            return None
+        out: list[dict[str, str]] = []
+        for item in flags:
+            if isinstance(item, dict):
+                title = str(item.get("title") or "").strip()[:180]
+                url = str(item.get("url") or item.get("link") or "").strip()
+                if title:
+                    out.append({"title": title, "url": url})
+            else:
+                title = str(item).strip()[:180]
+                if title:
+                    out.append({"title": title, "url": ""})
+            if len(out) >= 5:
+                break
+        return out
     except Exception:
         logger.debug("News cache read failed for %s", ticker, exc_info=True)
     return None
 
 
-def _write_cache(ticker: str, flags: list[str]) -> None:
+def _write_cache(ticker: str, flags: list[dict[str, str]]) -> None:
     path = _cache_path(ticker)
     try:
         path.write_text(
@@ -126,7 +140,14 @@ def _write_cache(ticker: str, flags: list[str]) -> None:
                 {
                     "ticker": ticker,
                     "fetched_at": time.time(),
-                    "flags": flags[:5],
+                    "flags": [
+                        {
+                            "title": str(f.get("title") or "")[:180],
+                            "url": str(f.get("url") or "")[:500],
+                        }
+                        for f in flags[:5]
+                        if str(f.get("title") or "").strip()
+                    ],
                 },
                 ensure_ascii=False,
             ),
@@ -138,8 +159,8 @@ def _write_cache(ticker: str, flags: list[str]) -> None:
 
 def _risk_flags_from_items(
     items: list[dict[str, str]], *, require_trusted_link: bool
-) -> list[str]:
-    flags: list[str] = []
+) -> list[dict[str, str]]:
+    flags: list[dict[str, str]] = []
     for item in items:
         title = str(item.get("title") or "").strip()
         desc = str(item.get("desc") or "").strip()
@@ -153,7 +174,7 @@ def _risk_flags_from_items(
             continue
         snippet = title or desc
         if snippet:
-            flags.append(snippet[:180])
+            flags.append({"title": snippet[:180], "url": link[:500] if link else ""})
         if len(flags) >= 5:
             break
     return flags
@@ -285,9 +306,9 @@ def _allow_googlenews() -> bool:
     }
 
 
-def fetch_news_flags(ticker: str, max_items: int = 8) -> list[str]:
+def fetch_news_flags(ticker: str, max_items: int = 8) -> list[dict[str, str]]:
     """
-    Return short risk flags from headlines.
+    Return risk headline dicts {title, url} for grading + email links.
     Failures are non-fatal — grading continues without news.
     """
     symbol = str(ticker or "").strip().upper()
@@ -323,7 +344,7 @@ def fetch_news_flags(ticker: str, max_items: int = 8) -> list[str]:
 
 def fetch_news_for_watchlist(
     tickers: list[str], max_workers: int = 6
-) -> dict[str, list[str]]:
+) -> dict[str, list[dict[str, str]]]:
     """Fetch news flags in parallel so one slow ticker does not stall the rest."""
     unique: list[str] = []
     for raw in tickers:
@@ -334,7 +355,7 @@ def fetch_news_for_watchlist(
         return {}
 
     workers = max(1, min(max_workers, len(unique)))
-    out: dict[str, list[str]] = {}
+    out: dict[str, list[dict[str, str]]] = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(fetch_news_flags, t): t for t in unique}
         for fut in as_completed(futures):
