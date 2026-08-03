@@ -81,9 +81,17 @@ class ScheduleConfig(BaseModel):
     @field_validator("timezone")
     @classmethod
     def validate_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo
+
         tz = (value or "UTC").strip()
         if not tz or len(tz) > 64:
             raise ValueError("timezone must be a non-empty IANA string")
+        try:
+            ZoneInfo(tz)
+        except Exception as exc:
+            raise ValueError(
+                f"invalid timezone '{tz}' — use an IANA name like America/Toronto"
+            ) from exc
         return tz
 
 

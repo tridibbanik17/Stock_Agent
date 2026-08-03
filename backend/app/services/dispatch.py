@@ -57,17 +57,65 @@ def late_minutes() -> int:
     return _env_minutes("DISPATCH_LATE_MINUTES", 120)
 
 
+# Common non-IANA labels → real zones (bad TZ previously fell back to UTC and missed slots).
+_TZ_ALIASES = {
+    "toronto": "America/Toronto",
+    "america/toronto": "America/Toronto",
+    "eastern": "America/New_York",
+    "est": "America/New_York",
+    "edt": "America/New_York",
+    "new york": "America/New_York",
+    "america/new_york": "America/New_York",
+    "pacific": "America/Los_Angeles",
+    "pst": "America/Los_Angeles",
+    "pdt": "America/Los_Angeles",
+    "los angeles": "America/Los_Angeles",
+    "vancouver": "America/Vancouver",
+    "kolkata": "Asia/Kolkata",
+    "india": "Asia/Kolkata",
+    "ist": "Asia/Kolkata",
+}
+
+
+def resolve_timezone(name: str | None) -> tuple[str, bool]:
+    """
+    Return (iana_name, ok).
+    ok=False means we had to fall back to UTC (matching will be wrong for local clocks).
+    """
+    raw = (name or "UTC").strip() or "UTC"
+    try:
+        ZoneInfo(raw)
+        return raw, True
+    except Exception:
+        pass
+    alias = _TZ_ALIASES.get(raw.lower())
+    if alias:
+        try:
+            ZoneInfo(alias)
+            return alias, True
+        except Exception:
+            pass
+    logger.warning(
+        "Invalid timezone %r — falling back to UTC (sends may miss local slots)",
+        raw,
+    )
+    return "UTC", False
+
+
 def user_to_schedule(row: dict) -> dict:
+    tz, _ok = resolve_timezone(row.get("timezone"))
     return {
         "frequency": row.get("schedule_frequency") or "custom",
         "days": list(row.get("preferred_days") or []),
         "times": list(row.get("preferred_hours") or []),
-        "timezone": row.get("timezone") or "UTC",
+        "timezone": tz,
     }
 
 
 def _local_now(schedule: dict, now_utc: datetime) -> datetime:
-    tz_name = schedule.get("timezone") or "UTC"
+    tz_name, ok = resolve_timezone(schedule.get("timezone"))
+    if not ok:
+        return now_utc.astimezone(timezone.utc)
     try:
         return now_utc.astimezone(ZoneInfo(tz_name))
     except Exception:
@@ -438,10 +486,18 @@ def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
     users = load_enabled_users()
     matched: list[tuple[dict, datetime]] = []
     skipped_dedupe = 0
+    not_due = 0
+    invalid_tz = 0
+    empty_watchlist = 0
     for row in users:
+        raw_tz = row.get("timezone")
+        _resolved, tz_ok = resolve_timezone(raw_tz if isinstance(raw_tz, str) else None)
+        if not tz_ok:
+            invalid_tz += 1
         schedule = user_to_schedule(row)
         preferred = matching_due_slot(schedule, now)
         if preferred is None:
+            not_due += 1
             continue
         if already_sent_for_slot(row, preferred):
             skipped_dedupe += 1
@@ -452,12 +508,25 @@ def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
                 row.get("last_sent_at"),
             )
             continue
+        if not normalize_watchlist(row.get("watchlist")):
+            empty_watchlist += 1
+            logger.warning(
+                "Due but empty watchlist email=%s slot=%s — skip send",
+                row.get("email"),
+                preferred.isoformat(),
+            )
+            continue
         matched.append((row, preferred))
 
     if not matched:
         logger.info(
-            "No users due for delivery (dedupe_skips=%d) — idle exit.",
+            "No users due for delivery (enabled=%d not_due=%d dedupe=%d "
+            "invalid_tz=%d empty_watchlist=%d) — idle exit.",
+            len(users),
+            not_due,
             skipped_dedupe,
+            invalid_tz,
+            empty_watchlist,
         )
         return {
             "ok": True,
@@ -466,6 +535,10 @@ def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
             "failures": 0,
             "dedupe_skips": skipped_dedupe,
             "idle": True,
+            "enabled_users": len(users),
+            "not_due": not_due,
+            "invalid_timezone": invalid_tz,
+            "empty_watchlist": empty_watchlist,
         }
 
     matched_rows = [row for row, _ in matched]
