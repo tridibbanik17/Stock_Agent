@@ -111,6 +111,26 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def resolve_currency(symbol: str, info: dict[str, Any] | None = None) -> str:
+    """
+    Prefer yfinance info.currency; fall back by exchange suffix.
+    TSX/TSXV (.TO / .V) default CAD — never invent USD for Canadian listings.
+    """
+    info = info or {}
+    raw = str(info.get("currency") or "").strip().upper()
+    if raw and raw not in {"N/A", "NONE", "NULL"}:
+        return raw
+
+    sym = (symbol or "").strip().upper()
+    if sym.endswith(".TO") or sym.endswith(".V") or sym.endswith(".CN"):
+        return "CAD"
+    if sym.endswith(".L"):
+        return "GBP"
+    if sym.endswith(".T") or sym.endswith(".TOKYO"):
+        return "JPY"
+    return "USD"
+
+
 def _roe_trend(income_stmt: pd.DataFrame, balance_sheet: pd.DataFrame) -> list[str]:
     roes: list[str] = []
     if income_stmt is None or income_stmt.empty or balance_sheet is None or balance_sheet.empty:
@@ -152,7 +172,7 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
         info = stock.info or {}
         asset_class = classify_asset_from_info(info, symbol)
         price = _safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
-        currency = str(info.get("currency") or "USD")
+        currency = resolve_currency(symbol, info)
         peg = _safe_float(info.get("pegRatio"))
 
         try:
@@ -219,7 +239,7 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
         return {
             "ticker": symbol,
             "price": None,
-            "currency": "USD",
+            "currency": resolve_currency(symbol),
             "pegRatio": None,
             "deRatio": None,
             "roeTrend": ["N/A", "N/A", "N/A"],
@@ -316,7 +336,7 @@ def analyze_watchlist(
                 results[ticker] = {
                     "ticker": ticker,
                     "price": None,
-                    "currency": "USD",
+                    "currency": resolve_currency(ticker),
                     "error": str(exc),
                     "asOf": datetime.now(timezone.utc).isoformat(),
                     "assetClass": classify_asset(ticker),

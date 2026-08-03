@@ -27,7 +27,7 @@ from app.services.email_report import (
     send_report_email,
 )
 from app.services.grading import attach_grades
-from app.services.market_data import analyze_watchlist
+from app.services.market_data import analyze_watchlist, resolve_currency
 from app.services.news import fetch_news_for_watchlist
 from app.services.supabase_client import (
     ensure_unsubscribe_token,
@@ -302,7 +302,7 @@ def quotes_from_cache(
             {
                 "ticker": key,
                 "price": None,
-                "currency": "USD",
+                "currency": resolve_currency(key),
                 "verdict": "n/a",
                 "grade": "HOLD",
                 "notes": ["No shared cache entry for this ticker in this cron tick."],
