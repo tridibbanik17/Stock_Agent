@@ -513,8 +513,12 @@ function renderTimeRows(times) {
   els.addTime.disabled = list.length >= MAX_SEND_TIMES;
   els.addTime.textContent =
     list.length >= MAX_SEND_TIMES
-      ? `Maximum ${MAX_SEND_TIMES} times`
+      ? `Maximum ${MAX_SEND_TIMES} times/day`
       : "+ Add another time";
+  els.addTime.title =
+    list.length >= MAX_SEND_TIMES
+      ? `Maximum ${MAX_SEND_TIMES} times per day`
+      : "Add another send time";
 }
 
 function refreshScheduleSummary() {
@@ -538,7 +542,7 @@ function onAddSendTime() {
   const times = readTimesFromDom();
   if (times.length >= MAX_SEND_TIMES) {
     setStatus(
-      `You can schedule up to ${MAX_SEND_TIMES} send times per day (max 14 per week).`,
+      `You can schedule up to ${MAX_SEND_TIMES} times per day (max 14 per week).`,
       "warn",
       "subscribe",
       "error"
