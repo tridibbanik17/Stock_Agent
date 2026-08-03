@@ -64,36 +64,14 @@ def build_unsubscribe_url(token: str, base_url: str | None = None) -> str:
 
 
 def _metric_glossary() -> list[str]:
-    """Plain-language guide aligned with Stock Agent grading rules."""
+    """Short plain-language footer — keep email scannable (no Gemini on this path)."""
     return [
-        "METRIC GUIDE (simple definitions)",
+        "METRIC GUIDE",
         "-" * 46,
-        "Grade: overall score from 0-5 checks. 4-5 = STRONG BUY, 3 = HOLD, 0-2 = AVOID.",
-        "",
-        "Debt-to-Equity (D/E): how much debt vs shareholder equity.",
-        "  Lower is usually safer. We like under ~1.5 for most stocks",
-        "  (looser for capital-heavy names like telecom).",
-        "",
-        "PEG (Price/Earnings to Growth): valuation vs expected earnings growth.",
-        "  Lower can mean cheaper growth. We like under ~1.0 generally,",
-        "  under ~1.5 for growth tech.",
-        "",
-        "ROE (Return on Equity): profit made on shareholder money.",
-        "  Higher is usually better. We like latest ROE above ~15%",
-        "  (list shows recent years; falling ROE triggers a warning).",
-        "",
-        "200-SMA (200-day Simple Moving Average): long-term trend line.",
-        "  Price above it = healthier uptrend; below = weaker trend.",
-        "",
-        "RSI (Relative Strength Index, 0-100): recent momentum / heat.",
-        "  Under ~35 can look oversold (possible bounce); over ~70 can look overbought.",
-        "",
-        "Asset class: derived from yfinance sector/industry/quoteType",
-        "  (growth_tech, crypto_proxy, capital_intensive, or standard).",
-        "",
-        "Notes: short explanations of why the grade leaned positive or cautious.",
-        "",
-        "Privacy: this report uses tickers only - never your share counts or buy prices.",
+        "Grade 4-5 = STRONG BUY, 3 = HOLD, 0-2 = AVOID.",
+        "D/E = debt vs equity. PEG = valuation vs growth.",
+        "RSI = momentum (0-100). 200-SMA = long-term trend.",
+        "Privacy: tickers only - never share counts or buy prices.",
         "Not investment advice; do your own research.",
     ]
 
@@ -333,7 +311,8 @@ def format_report_html(
         <p style="margin:0;font-size:12px;color:#64748b;line-height:1.55;">
           Grade 4–5 = STRONG BUY, 3 = HOLD, 0–2 = AVOID.
           D/E = debt vs equity. PEG = valuation vs growth. RSI = momentum (0–100).
-          200-SMA = long-term trend. Not investment advice.
+          200-SMA = long-term trend. Grades use rules + headlines — not Gemini.
+          Not investment advice.
         </p>
         """
 
