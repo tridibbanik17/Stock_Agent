@@ -29,6 +29,14 @@ class SendResult:
         return "success" if self.ok else "failure"
 
 
+def _plain_ticker(ticker: object) -> str:
+    """
+    Stop Gmail/Outlook from auto-linking symbols like BCE.TO as https://bce.to.
+    Insert a zero-width space after each dot (display looks the same).
+    """
+    return str(ticker or "").replace(".", ".\u200b")
+
+
 def _note_lines_for_email(q: dict[str, Any]) -> list[tuple[str, str | None]]:
     """
     Return (text, optional_url) for notes.
