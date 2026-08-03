@@ -199,6 +199,74 @@ export function formatScheduleLabel(schedule) {
 }
 
 /**
+ * @param {ScheduleConfig} cfg
+ * @param {number} jsDay 0=Sun … 6=Sat
+ */
+function dayMatchesSchedule(cfg, jsDay) {
+  if (cfg.frequency === "daily") return true;
+  if (cfg.frequency === "weekdays") return jsDay >= 1 && jsDay <= 5;
+  return (cfg.days || []).includes(jsDay);
+}
+
+/**
+ * Next preferred send Date in the browser's local timezone (same as schedule TZ for most users).
+ * Includes the current slot while still in the early window (up to 10 min before preferred).
+ * @param {ScheduleConfig|unknown} schedule
+ * @param {Date} [now]
+ * @returns {Date|null}
+ */
+export function computeNextSendAt(schedule, now = new Date()) {
+  const cfg = normalizeSchedule(schedule);
+  if (!cfg.days.length || !cfg.times.length) return null;
+
+  const times = [...cfg.times].map(normalizeTime).filter(Boolean).sort();
+  const earlyMs = 10 * 60 * 1000;
+
+  for (let dayOffset = 0; dayOffset <= 8; dayOffset += 1) {
+    const base = new Date(now.getTime());
+    base.setSeconds(0, 0);
+    base.setMilliseconds(0);
+    base.setDate(base.getDate() + dayOffset);
+
+    if (!dayMatchesSchedule(cfg, base.getDay())) continue;
+
+    for (const timeStr of times) {
+      const [hh, mm] = timeStr.split(":").map(Number);
+      const preferred = new Date(base.getTime());
+      preferred.setHours(hh, mm, 0, 0);
+      const earlyStart = new Date(preferred.getTime() - earlyMs);
+      if (now < earlyStart) return preferred;
+      if (now <= preferred) return preferred;
+    }
+  }
+  return null;
+}
+
+/**
+ * Popup line: when the next report is aimed for (may send up to 10 min early).
+ * @param {ScheduleConfig|unknown} schedule
+ * @param {Date} [now]
+ * @returns {string}
+ */
+export function formatNextEmailLabel(schedule, now = new Date()) {
+  const cfg = normalizeSchedule(schedule);
+  if (!cfg.days.length || !cfg.times.length) {
+    return "Next email: pick days and times first";
+  }
+  const next = computeNextSendAt(cfg, now);
+  if (!next) return "Next email: unavailable";
+
+  const when = next.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `Next email: ${when} · may send up to 10 min early`;
+}
+
+/**
  * Split "HH:MM" into frictionless picker parts.
  * @param {string} timeHhMm
  * @returns {{ hour12: number, minute: number, period: 'AM'|'PM' }}

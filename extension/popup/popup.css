@@ -317,6 +317,13 @@ button.add-time-btn {
   line-height: 1.35;
 }
 
+.schedule-next {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .linkish-btn {
   display: block;
   width: 100%;

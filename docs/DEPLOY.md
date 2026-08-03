@@ -57,5 +57,8 @@ Set the same env vars as above, with `TRUST_PROXY=true` and `PUBLIC_API_BASE_URL
 - [ ] `/health` returns ok over HTTPS
 - [ ] Extension Refresh loads live quotes (not localhost)
 - [ ] Save & Subscribe succeeds
-- [ ] Recovery / unsubscribe links in email use the public host
-- [ ] Actions secret `PUBLIC_API_BASE_URL` matches the hosted API
+- [ ] Unsubscribe links in email use the public host
+- [ ] Render env: `DISPATCH_SECRET`, Supabase, Resend, `PUBLIC_API_BASE_URL`
+- [ ] Actions secrets: `PUBLIC_API_BASE_URL`, `DISPATCH_SECRET` (same secret as Render)
+- [ ] Manual **Scheduled report dispatch** run succeeds (idle `matched: 0` is OK)
+- [ ] Supabase migration `004_add_delivery_logs.sql` applied (debug skips in `delivery_logs`)

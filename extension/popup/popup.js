@@ -16,6 +16,7 @@ import {
   clearAllLocalSettings,
   defaultSchedule,
   formatScheduleLabel,
+  formatNextEmailLabel,
   getGeminiKey,
   getHoldings,
   getLocalState,
@@ -58,6 +59,7 @@ const els = {
   times: /** @type {HTMLElement} */ ($("schedule-times")),
   addTime: /** @type {HTMLButtonElement} */ ($("add-time")),
   scheduleSummary: /** @type {HTMLElement} */ ($("schedule-summary")),
+  scheduleNext: /** @type {HTMLElement} */ ($("schedule-next")),
   subscribe: /** @type {HTMLButtonElement} */ ($("subscribe-btn")),
   geminiKey: /** @type {HTMLInputElement} */ ($("gemini-key")),
   toggleKey: /** @type {HTMLButtonElement} */ ($("toggle-key")),
@@ -522,7 +524,9 @@ function renderTimeRows(times) {
 }
 
 function refreshScheduleSummary() {
-  els.scheduleSummary.textContent = formatScheduleLabel(readScheduleFromDom());
+  const schedule = readScheduleFromDom();
+  els.scheduleSummary.textContent = formatScheduleLabel(schedule);
+  els.scheduleNext.textContent = formatNextEmailLabel(schedule);
 }
 
 /** @param {HTMLButtonElement} btn */
