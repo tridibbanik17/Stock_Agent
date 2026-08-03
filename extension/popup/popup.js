@@ -58,8 +58,9 @@ const els = {
   times: /** @type {HTMLElement} */ ($("schedule-times")),
   addTime: /** @type {HTMLButtonElement} */ ($("add-time")),
   scheduleSummary: /** @type {HTMLElement} */ ($("schedule-summary")),
-  gradeChangeOnly: /** @type {HTMLInputElement} */ ($("grade-change-only")),
   subscribe: /** @type {HTMLButtonElement} */ ($("subscribe-btn")),
+  showRecover: /** @type {HTMLButtonElement} */ ($("show-recover")),
+  recoverPanel: /** @type {HTMLElement} */ ($("recover-panel")),
   manageToken: /** @type {HTMLInputElement} */ ($("manage-token-input")),
   recover: /** @type {HTMLButtonElement} */ ($("recover-btn")),
   geminiKey: /** @type {HTMLInputElement} */ ($("gemini-key")),
@@ -227,10 +228,12 @@ function bindEvents() {
 
   els.email.addEventListener("input", () => clearStatus("subscribe"));
   els.manageToken.addEventListener("input", () => clearStatus("subscribe"));
-  els.gradeChangeOnly.addEventListener("change", () => clearStatus("subscribe"));
 
   els.subscribe.addEventListener("click", () => {
     void onSaveAndSubscribe();
+  });
+  els.showRecover.addEventListener("click", () => {
+    openRecoverPanel();
   });
   els.recover.addEventListener("click", () => {
     void onRecoverAccess();
@@ -420,7 +423,7 @@ async function hydrateFromStorage() {
 
   els.email.value = state.delivery.email || "";
   els.manageToken.value = state.manageToken || "";
-  els.gradeChangeOnly.checked = Boolean(state.delivery.emailOnGradeChangeOnly);
+  els.recoverPanel.hidden = true;
   applyScheduleToDom(normalizeSchedule(state.delivery.schedule));
   els.geminiKey.value = state.geminiApiKey || (await getGeminiKey());
   els.autoAnalyze.checked = state.autoAnalyze !== false;
@@ -1196,7 +1199,7 @@ async function onClearAllSettings() {
   await clearAllLocalSettings();
   els.email.value = "";
   els.manageToken.value = "";
-  els.gradeChangeOnly.checked = false;
+  els.recoverPanel.hidden = true;
   applyScheduleToDom(defaultSchedule());
   els.geminiKey.value = "";
   els.geminiKey.type = "password";
@@ -1255,7 +1258,7 @@ async function onSaveAndSubscribe() {
       email,
       schedule,
       enabled: true,
-      emailOnGradeChangeOnly: els.gradeChangeOnly.checked,
+      emailOnGradeChangeOnly: false,
     });
 
     const pastedToken = els.manageToken.value.trim();
@@ -1286,12 +1289,15 @@ async function onSaveAndSubscribe() {
         email: outbound.email,
         schedule: outbound.schedule,
         enabled: outbound.enabled,
-        emailOnGradeChangeOnly: Boolean(outbound.emailOnGradeChangeOnly),
+        emailOnGradeChangeOnly: false,
       },
       userId: response?.id || response?.userId || state.userId,
       manageToken: nextToken,
     });
-    if (nextToken) els.manageToken.value = nextToken;
+    if (nextToken) {
+      els.manageToken.value = nextToken;
+      els.recoverPanel.hidden = true;
+    }
 
     setStatus(
       `Saved & Subscribed successfully! ${formatScheduleLabel(outbound.schedule)} → ${outbound.email}`,
@@ -1302,14 +1308,25 @@ async function onSaveAndSubscribe() {
   } catch (error) {
     console.error("[SUBSCRIBE] failed", error);
     const msg = error?.message || "Subscribe failed";
-    const hint =
-      error?.status === 403
-        ? `${msg} Use Email recovery link if this is your address.`
-        : msg;
-    setStatus(hint, "error", "subscribe", "error");
+    if (error?.status === 403) {
+      openRecoverPanel();
+      setStatus(
+        `${msg} Open the recovery steps below if this is your email.`,
+        "error",
+        "subscribe",
+        "error"
+      );
+    } else {
+      setStatus(msg, "error", "subscribe", "error");
+    }
   } finally {
     els.subscribe.disabled = false;
   }
+}
+
+function openRecoverPanel() {
+  els.recoverPanel.hidden = false;
+  els.manageToken.focus();
 }
 
 /**
@@ -1323,12 +1340,13 @@ async function onRecoverAccess() {
     return;
   }
 
+  openRecoverPanel();
   els.recover.disabled = true;
   setStatus("Sending recovery link…", "info", "subscribe", "persistent");
   try {
     await recoverSubscription(email);
     setStatus(
-      "If that email is subscribed, a recovery link was sent. Open it, copy the new token here, then Save & Subscribe.",
+      "If that email is subscribed, a recovery link was sent. Open it, paste the new token below, then Save & Subscribe.",
       "ok",
       "subscribe",
       "persistent"

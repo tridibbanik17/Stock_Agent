@@ -317,47 +317,47 @@ button.add-time-btn {
   line-height: 1.35;
 }
 
-.digest-option {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px;
-  align-items: start;
-  margin-top: 12px;
-  font-size: 0.74rem;
-  color: var(--text);
-  line-height: 1.35;
+.linkish-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
 }
 
-.digest-option input {
-  margin-top: 2px;
+.linkish-btn:hover {
+  color: var(--text);
 }
 
-.digest-option .muted-hint {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 0.68rem;
-}
-
-.ownership-row {
+.recover-panel {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.recover-panel[hidden] {
+  display: none;
+}
+
+.recover-copy {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .ownership-label {
   font-size: 0.72rem;
   color: var(--muted);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: baseline;
-}
-
-.ownership-label .muted-hint {
-  font-weight: 400;
-  opacity: 0.85;
 }
 
 #manage-token-input {

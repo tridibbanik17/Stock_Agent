@@ -149,37 +149,37 @@
           <p id="schedule-summary" class="schedule-summary" aria-live="polite">
             Every Saturday at 9:00 AM
           </p>
-
-          <label class="digest-option" for="grade-change-only">
-            <input type="checkbox" id="grade-change-only" />
-            <span>
-              Prefer grade-change digests
-              <span class="muted-hint">
-                Full report when a grade flips; otherwise a short “no changes” email (still sent on schedule).
-              </span>
-            </span>
-          </label>
         </div>
 
         <button type="button" id="subscribe-btn" class="primary">
           Save &amp; Subscribe
         </button>
-        <div class="ownership-row">
+
+        <button type="button" id="show-recover" class="linkish-btn">
+          Having trouble saving?
+        </button>
+
+        <div id="recover-panel" class="recover-panel" hidden>
+          <p class="recover-copy">
+            If this email is already subscribed (another device or after clearing
+            settings), email yourself a recovery link. Open it, paste the new
+            token below, then Save &amp; Subscribe again.
+          </p>
+          <button type="button" id="recover-btn" class="ghost recover-btn">
+            Email recovery link
+          </button>
           <label class="ownership-label" for="manage-token-input">
-            Ownership token
-            <span class="muted-hint">(auto-saved; paste after email recovery)</span>
+            Paste token from recovery email
           </label>
           <input
             id="manage-token-input"
             type="password"
             autocomplete="off"
             spellcheck="false"
-            placeholder="Issued on first subscribe"
+            placeholder="Paste ownership token"
           />
-          <button type="button" id="recover-btn" class="ghost recover-btn">
-            Email recovery link
-          </button>
         </div>
+
         <p
           id="status-subscribe"
           class="status status-inline"
