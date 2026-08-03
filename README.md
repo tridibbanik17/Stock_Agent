@@ -29,6 +29,7 @@ Privacy-first Chrome extension for retail traders: keep a watchlist, see live gr
 | Market data | yfinance |
 | Email | Resend (dry-run if no API key) |
 | Cron | GitHub Actions every ~15 minutes |
+| Hosted API | Render (Docker) — see [docs/DEPLOY.md](docs/DEPLOY.md) |
 
 ## Data flow and field reference
 
@@ -42,8 +43,9 @@ Ticker autocomplete coverage (NASDAQ / NYSE / TSX counts): see **[docs/TICKER_CA
 extension/          Chrome extension (popup + storage + API client)
 backend/            FastAPI app, services, cron worker
 .github/workflows/  Scheduled reports + extension version bump
-docs/               Extra docs and assets
+docs/               Extra docs (data flow, deploy, ticker catalog)
 scripts/            Optional local version bump (PowerShell)
+render.yaml         Render Blueprint for hosted FastAPI
 ```
 
 ## Quick start
@@ -72,7 +74,8 @@ Existing databases: also run migrations `001`–`005` under `backend/migrations/
 4. Open the popup, add tickers, click **Refresh** for live grades
 5. Set email + schedule, click **Save & Subscribe** (backend must be running)
 
-Default API base is `http://localhost:8000` (`extension/lib/api.js`).
+Default API base is local (`extension/lib/config.js` → `USE_LOCAL_API = true`).  
+For real users, host FastAPI and flip to production — see **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
 ### 3. Local cron (optional)
 

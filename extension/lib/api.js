@@ -3,11 +3,10 @@
  * Never accepts or forwards holdings / Gemini keys.
  */
 
+import { resolveApiBase } from "./config.js";
 import { assertNoPrivateLeak, buildCloudPayload } from "./storage.js";
 
-// Default to local FastAPI during development; flip for production release.
-export const API_BASE =
-  globalThis.__STOCK_AGENT_API_BASE__ || "http://localhost:8000";
+export const API_BASE = resolveApiBase();
 
 async function request(path, options = {}) {
   let response;
@@ -22,7 +21,10 @@ async function request(path, options = {}) {
     });
   } catch (networkError) {
     const error = new Error(
-      "Cannot reach Stock Agent API. Is the FastAPI server running on localhost:8000?"
+      `Cannot reach Stock Agent API at ${API_BASE}. ` +
+        (API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1")
+          ? "Is the FastAPI server running locally?"
+          : "Is the hosted API awake? Free Render services sleep after idle.")
     );
     error.cause = networkError;
     throw error;
