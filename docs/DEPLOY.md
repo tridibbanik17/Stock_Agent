@@ -18,6 +18,7 @@ so email unsubscribe links point at the **same** public API.
 | `RESEND_API_KEY` | Optional; dry-run without it |
 | `REPORT_FROM_EMAIL` | Verified Resend from-address |
 | `PUBLIC_API_BASE_URL` | Set **after** first deploy to your `https://….onrender.com` URL |
+| `DISPATCH_SECRET` | Shared secret for `POST /api/internal/dispatch-due` |
 | `TRUST_PROXY` | Already `true` in the blueprint |
 
 5. Deploy. Open `https://YOUR-SERVICE.onrender.com/health` — expect `{"status":"ok",…}`.

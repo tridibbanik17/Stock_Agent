@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
+import os
+import secrets
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException, Query, status
+from fastapi import APIRouter, Body, Header, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 
 from app.api.abuse import (
@@ -172,6 +175,56 @@ async def subscribe(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Database connection failed. Check Supabase credentials and schema.",
+        ) from exc
+
+
+def _require_dispatch_secret(x_dispatch_secret: str | None) -> None:
+    expected = os.getenv("DISPATCH_SECRET", "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="DISPATCH_SECRET is not configured on this API instance.",
+        )
+    provided = (x_dispatch_secret or "").strip()
+    if not provided or not secrets.compare_digest(provided, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing X-Dispatch-Secret.",
+        )
+
+
+@router.post(
+    "/internal/dispatch-due",
+    summary="Hybrid B: send reports for users due soon or overdue",
+)
+async def dispatch_due(
+    x_dispatch_secret: str | None = Header(default=None, alias="X-Dispatch-Secret"),
+) -> dict[str, Any]:
+    """
+    Called by GitHub Actions / Cloud Scheduler every few minutes.
+    Sends when local time is in [preferred − early, preferred] or overdue
+    within DISPATCH_LATE_MINUTES. Auth: X-Dispatch-Secret header.
+    """
+    _require_dispatch_secret(x_dispatch_secret)
+    logger.info("POST /api/internal/dispatch-due")
+
+    # Import inside the handler so API boot does not require worker path quirks.
+    from app.services.dispatch import run_due_dispatch
+
+    try:
+        result = await asyncio.to_thread(run_due_dispatch)
+        return result
+    except RuntimeError as exc:
+        logger.error("Dispatch-due configuration error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("Dispatch-due failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Dispatch failed: {exc}",
         ) from exc
 
 

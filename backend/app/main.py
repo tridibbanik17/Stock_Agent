@@ -38,7 +38,7 @@ app.add_middleware(
     allow_origin_regex=r"chrome-extension://[\w-]+",
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept"],
+    allow_headers=["Content-Type", "Accept", "X-Dispatch-Secret"],
     expose_headers=[
         "Retry-After",
         "X-RateLimit-Limit",
@@ -85,6 +85,7 @@ async def root() -> dict[str, str]:
         "subscribe": "POST /api/subscribe",
         "unsubscribe": "GET|POST|DELETE /api/unsubscribe",
         "quotes": "POST /api/quotes/snapshot",
+        "dispatch_due": "POST /api/internal/dispatch-due",
     }
 
 

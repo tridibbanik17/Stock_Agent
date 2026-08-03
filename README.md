@@ -112,6 +112,7 @@ Always `git pull` before new work so you pick up the bot bump commit.
 | Endpoint | Purpose |
 |----------|---------|
 | `POST /api/subscribe` | Upsert email / tickers / schedule (keyed by email) |
+| `POST /api/internal/dispatch-due` | Send due/overdue reports (header `X-Dispatch-Secret`) |
 | `GET /api/unsubscribe?token=…` | One-click unsubscribe (email link; sets `enabled=false`) |
 | `POST /api/unsubscribe` | Same via JSON `{ "token" }` or `?token=` |
 | `DELETE /api/unsubscribe/{token}` | Same via path token |

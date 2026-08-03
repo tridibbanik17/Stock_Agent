@@ -27,6 +27,12 @@ services:
         sync: false
       - key: PUBLIC_API_BASE_URL
         sync: false
+      - key: DISPATCH_SECRET
+        sync: false
+      - key: DISPATCH_EARLY_MINUTES
+        value: "10"
+      - key: DISPATCH_LATE_MINUTES
+        value: "120"
       - key: TRUST_PROXY
         value: "true"
       - key: LOG_LEVEL
