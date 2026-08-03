@@ -111,28 +111,11 @@ class SubscribeRequest(BaseModel):
     )
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     enabled: bool = True
-    # When true: full report on grade flips, else a short no-change digest (still emails).
-    emailOnGradeChangeOnly: bool = False
-    # Ownership proof for updates (omit on first create for a new email).
-    manageToken: str | None = Field(
-        default=None,
-        min_length=8,
-        max_length=64,
-        description="Required when this email already has a subscription",
-    )
 
     @field_validator("email")
     @classmethod
     def normalize_email(cls, value: EmailStr) -> str:
         return str(value).strip().lower()
-
-    @field_validator("manageToken")
-    @classmethod
-    def normalize_manage_token(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        text = str(value).strip()
-        return text or None
 
     @field_validator("watchlist")
     @classmethod
@@ -164,31 +147,8 @@ class SubscribeResponse(BaseModel):
     preferred_days: list[int]
     timezone: str
     enabled: bool
-    manageToken: str | None = None
-    emailOnGradeChangeOnly: bool = False
     created_at: str | None = None
     updated_at: str | None = None
-
-
-class RecoverRequest(BaseModel):
-    """Start ownership recovery: email a one-time reclaim link."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    email: EmailStr
-
-    @field_validator("email")
-    @classmethod
-    def normalize_email(cls, value: EmailStr) -> str:
-        return str(value).strip().lower()
-
-
-class RecoverResponse(BaseModel):
-    ok: bool = True
-    message: str = (
-        "If that email has a subscription, a recovery link was sent. "
-        "Check your inbox."
-    )
 
 
 class UnsubscribeRequest(BaseModel):

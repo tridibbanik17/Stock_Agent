@@ -128,17 +128,9 @@ async def protect_unsubscribe(request: Request) -> None:
     await rate_limit("unsubscribe")(request)
 
 
-async def protect_recover(request: Request) -> None:
-    if request.method in {"POST", "PUT", "PATCH"}:
-        enforce_body_size(request)
-        enforce_json_content_type(request)
-    await rate_limit("recover")(request)
-
-
 ProtectSubscribe = Annotated[None, Depends(protect_subscribe)]
 ProtectSnapshot = Annotated[None, Depends(protect_snapshot)]
 ProtectUnsubscribe = Annotated[None, Depends(protect_unsubscribe)]
-ProtectRecover = Annotated[None, Depends(protect_recover)]
 
 
 def rate_limit_headers(request: Request) -> dict[str, str]:

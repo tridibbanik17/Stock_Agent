@@ -10,7 +10,6 @@
  *   watchlist: string[]  (max 25)
  *   delivery: { email, schedule: ScheduleConfig, enabled }
  *   userId: string|null
- *   manageToken: string|null  (ownership proof for POST /api/subscribe updates)
  *
  * ScheduleConfig.days uses JS getDay() convention: 0=Sun … 6=Sat.
  */
@@ -27,24 +26,21 @@
 
 /** Soft cap so a single user cannot enqueue an unbounded fan-out. */
 export const MAX_SEND_TIMES = 8;
-/** @typedef {{ email: string, schedule: ScheduleConfig, enabled: boolean, emailOnGradeChangeOnly?: boolean }} DeliveryPrefs */
+/** @typedef {{ email: string, schedule: ScheduleConfig, enabled: boolean }} DeliveryPrefs */
 /** @typedef {{
  *   holdings: HoldingsMap,
  *   geminiApiKey: string,
  *   autoAnalyze: boolean,
  *   watchlist: string[],
  *   delivery: DeliveryPrefs,
- *   userId: string|null,
- *   manageToken: string|null
+ *   userId: string|null
  * }} LocalState */
 /** @typedef {{
  *   email: string,
  *   watchlist: string[],
  *   schedule: ScheduleConfig,
  *   enabled: boolean,
- *   emailOnGradeChangeOnly?: boolean,
- *   userId: string|null,
- *   manageToken: string|null
+ *   userId: string|null
  * }} CloudPayload */
 
 export const MAX_WATCHLIST = 25;
@@ -77,7 +73,6 @@ const STORAGE_KEYS = Object.freeze({
   watchlist: "watchlist",
   delivery: "delivery",
   userId: "userId",
-  manageToken: "manageToken",
 });
 
 /** @returns {string} */
@@ -279,10 +274,8 @@ const DEFAULTS = Object.freeze({
       timezone: "UTC",
     }),
     enabled: false,
-    emailOnGradeChangeOnly: false,
   }),
   userId: null,
-  manageToken: null,
 });
 
 /** Keys that must never appear on an outbound cloud payload. */
@@ -448,14 +441,12 @@ export async function getDelivery() {
       email: "",
       schedule: defaultSchedule(),
       enabled: false,
-      emailOnGradeChangeOnly: false,
     };
   }
   return {
     email: typeof delivery.email === "string" ? delivery.email : "",
     schedule: normalizeSchedule(delivery.schedule),
     enabled: Boolean(delivery.enabled),
-    emailOnGradeChangeOnly: Boolean(delivery.emailOnGradeChangeOnly),
   };
 }
 
@@ -473,10 +464,6 @@ export async function setDelivery(patch) {
     ),
     enabled:
       typeof patch.enabled === "boolean" ? patch.enabled : current.enabled,
-    emailOnGradeChangeOnly:
-      typeof patch.emailOnGradeChangeOnly === "boolean"
-        ? patch.emailOnGradeChangeOnly
-        : Boolean(current.emailOnGradeChangeOnly),
   };
   await chrome.storage.local.set({ [STORAGE_KEYS.delivery]: next });
   return next;
@@ -510,22 +497,19 @@ export async function getLocalState(keys = null) {
           email: String(stored.delivery.email || ""),
           schedule: normalizeSchedule(stored.delivery.schedule),
           enabled: Boolean(stored.delivery.enabled),
-          emailOnGradeChangeOnly: Boolean(stored.delivery.emailOnGradeChangeOnly),
         }
       : {
           email: "",
           schedule: defaultSchedule(),
           enabled: false,
-          emailOnGradeChangeOnly: false,
         },
     userId: typeof stored.userId === "string" ? stored.userId : null,
-    manageToken: typeof stored.manageToken === "string" ? stored.manageToken : null,
   };
 }
 
 /**
- * Cache cloud-eligible fields after a (future) successful API sync.
- * @param {{ watchlist?: string[], delivery?: DeliveryPrefs, userId?: string|null, manageToken?: string|null }} patch
+ * Cache cloud-eligible fields after a successful API sync.
+ * @param {{ watchlist?: string[], delivery?: DeliveryPrefs, userId?: string|null }} patch
  */
 export async function cacheCloudProfile(patch) {
   /** @type {Record<string, unknown>} */
@@ -541,16 +525,9 @@ export async function cacheCloudProfile(patch) {
       email: String(patch.delivery.email || "").trim().toLowerCase(),
       schedule: normalizeSchedule(patch.delivery.schedule),
       enabled: Boolean(patch.delivery.enabled),
-      emailOnGradeChangeOnly: Boolean(patch.delivery.emailOnGradeChangeOnly),
     };
   }
   if ("userId" in patch) write.userId = patch.userId ?? null;
-  if ("manageToken" in patch) {
-    write.manageToken =
-      typeof patch.manageToken === "string" && patch.manageToken.trim()
-        ? patch.manageToken.trim()
-        : null;
-  }
   if (Object.keys(write).length) await chrome.storage.local.set(write);
   return write;
 }
@@ -582,9 +559,7 @@ export function buildCloudPayload(state) {
     watchlist,
     schedule,
     enabled: Boolean(state?.delivery?.enabled),
-    emailOnGradeChangeOnly: Boolean(state?.delivery?.emailOnGradeChangeOnly),
     userId: typeof state?.userId === "string" ? state.userId : null,
-    manageToken: typeof state?.manageToken === "string" ? state.manageToken : null,
   };
 
   return payload;
@@ -620,9 +595,7 @@ export function assertNoPrivateLeak(payload) {
     "watchlist",
     "schedule",
     "enabled",
-    "emailOnGradeChangeOnly",
     "userId",
-    "manageToken",
   ]);
   for (const key of Object.keys(payload)) {
     if (!allowed.has(key)) {

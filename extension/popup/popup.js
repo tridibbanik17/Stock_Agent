@@ -5,7 +5,7 @@
  * Cloud-eligible: email, watchlist, schedule → POST /api/subscribe
  */
 
-import { fetchWatchlistSnapshot, recoverSubscription, subscribeDelivery } from "../lib/api.js";
+import { fetchWatchlistSnapshot, subscribeDelivery } from "../lib/api.js";
 import { suggestTickers } from "../lib/tickers.js";
 import {
   MAX_SEND_TIMES,
@@ -59,10 +59,6 @@ const els = {
   addTime: /** @type {HTMLButtonElement} */ ($("add-time")),
   scheduleSummary: /** @type {HTMLElement} */ ($("schedule-summary")),
   subscribe: /** @type {HTMLButtonElement} */ ($("subscribe-btn")),
-  showRecover: /** @type {HTMLButtonElement} */ ($("show-recover")),
-  recoverPanel: /** @type {HTMLElement} */ ($("recover-panel")),
-  manageToken: /** @type {HTMLInputElement} */ ($("manage-token-input")),
-  recover: /** @type {HTMLButtonElement} */ ($("recover-btn")),
   geminiKey: /** @type {HTMLInputElement} */ ($("gemini-key")),
   toggleKey: /** @type {HTMLButtonElement} */ ($("toggle-key")),
   autoAnalyze: /** @type {HTMLInputElement} */ ($("auto-analyze")),
@@ -227,16 +223,9 @@ function bindEvents() {
   });
 
   els.email.addEventListener("input", () => clearStatus("subscribe"));
-  els.manageToken.addEventListener("input", () => clearStatus("subscribe"));
 
   els.subscribe.addEventListener("click", () => {
     void onSaveAndSubscribe();
-  });
-  els.showRecover.addEventListener("click", () => {
-    openRecoverPanel();
-  });
-  els.recover.addEventListener("click", () => {
-    void onRecoverAccess();
   });
 
   els.toggleKey.addEventListener("click", onToggleGeminiVisibility);
@@ -422,8 +411,6 @@ async function hydrateFromStorage() {
   const state = await getLocalState();
 
   els.email.value = state.delivery.email || "";
-  els.manageToken.value = state.manageToken || "";
-  els.recoverPanel.hidden = true;
   applyScheduleToDom(normalizeSchedule(state.delivery.schedule));
   els.geminiKey.value = state.geminiApiKey || (await getGeminiKey());
   els.autoAnalyze.checked = state.autoAnalyze !== false;
@@ -1198,8 +1185,6 @@ async function onClearAllSettings() {
 
   await clearAllLocalSettings();
   els.email.value = "";
-  els.manageToken.value = "";
-  els.recoverPanel.hidden = true;
   applyScheduleToDom(defaultSchedule());
   els.geminiKey.value = "";
   els.geminiKey.type = "password";
@@ -1258,30 +1243,20 @@ async function onSaveAndSubscribe() {
       email,
       schedule,
       enabled: true,
-      emailOnGradeChangeOnly: false,
     });
 
-    const pastedToken = els.manageToken.value.trim();
     const localView = {
       ...state,
       delivery,
       watchlist: state.watchlist,
       holdings: state.holdings,
       geminiApiKey: state.geminiApiKey,
-      manageToken: pastedToken || state.manageToken || null,
     };
 
     const outbound = assertNoPrivateLeak(buildCloudPayload(localView));
-    console.log("[SUBSCRIBE] sanitized outbound payload:", {
-      ...outbound,
-      manageToken: outbound.manageToken ? "[set]" : null,
-    });
+    console.log("[SUBSCRIBE] sanitized outbound payload:", outbound);
 
     const response = await subscribeDelivery(localView);
-    const nextToken =
-      (typeof response?.manageToken === "string" && response.manageToken) ||
-      localView.manageToken ||
-      null;
 
     await cacheCloudProfile({
       watchlist: outbound.watchlist,
@@ -1289,15 +1264,9 @@ async function onSaveAndSubscribe() {
         email: outbound.email,
         schedule: outbound.schedule,
         enabled: outbound.enabled,
-        emailOnGradeChangeOnly: false,
       },
       userId: response?.id || response?.userId || state.userId,
-      manageToken: nextToken,
     });
-    if (nextToken) {
-      els.manageToken.value = nextToken;
-      els.recoverPanel.hidden = true;
-    }
 
     setStatus(
       `Saved & Subscribed successfully! ${formatScheduleLabel(outbound.schedule)} → ${outbound.email}`,
@@ -1307,54 +1276,8 @@ async function onSaveAndSubscribe() {
     );
   } catch (error) {
     console.error("[SUBSCRIBE] failed", error);
-    const msg = error?.message || "Subscribe failed";
-    if (error?.status === 403) {
-      openRecoverPanel();
-      setStatus(
-        `${msg} Open the recovery steps below if this is your email.`,
-        "error",
-        "subscribe",
-        "error"
-      );
-    } else {
-      setStatus(msg, "error", "subscribe", "error");
-    }
+    setStatus(error?.message || "Subscribe failed", "error", "subscribe", "error");
   } finally {
     els.subscribe.disabled = false;
-  }
-}
-
-function openRecoverPanel() {
-  els.recoverPanel.hidden = false;
-  els.manageToken.focus();
-}
-
-/**
- * Request a one-time recovery email for the address in the email field.
- */
-async function onRecoverAccess() {
-  const email = els.email.value.trim();
-  if (!email || !email.includes("@")) {
-    setStatus("Enter your subscription email first.", "warn", "subscribe", "error");
-    els.email.focus();
-    return;
-  }
-
-  openRecoverPanel();
-  els.recover.disabled = true;
-  setStatus("Sending recovery link…", "info", "subscribe", "persistent");
-  try {
-    await recoverSubscription(email);
-    setStatus(
-      "If that email is subscribed, a recovery link was sent. Open it, paste the new token below, then Save & Subscribe.",
-      "ok",
-      "subscribe",
-      "persistent"
-    );
-  } catch (error) {
-    console.error("[RECOVER] failed", error);
-    setStatus(error?.message || "Recovery request failed", "error", "subscribe", "error");
-  } finally {
-    els.recover.disabled = false;
   }
 }

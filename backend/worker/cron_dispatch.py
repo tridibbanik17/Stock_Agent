@@ -32,11 +32,8 @@ load_dotenv(_BACKEND_ROOT / ".env")
 
 from app.services.email_report import (
     build_unsubscribe_url,
-    diff_grades,
-    format_no_change_text,
     format_report_html,
     format_report_text,
-    grades_map_from_quotes,
     send_report_email,
 )
 from app.services.grading import attach_grades
@@ -47,7 +44,6 @@ from app.services.supabase_client import (
     get_supabase,
     insert_delivery_log,
     mark_user_sent,
-    update_user_last_grades,
 )
 
 logging.basicConfig(
@@ -251,16 +247,6 @@ def dispatch_user(row: dict, quote_cache: dict[str, dict[str, Any]]) -> bool:
         len(watchlist),
     )
     quotes = quotes_from_cache(watchlist, quote_cache)
-    current_grades = grades_map_from_quotes(quotes)
-    previous_grades = row.get("last_grades") if isinstance(row.get("last_grades"), dict) else {}
-    grade_change_only = bool(row.get("email_on_grade_change_only"))
-    changes = diff_grades(previous_grades, current_grades)
-    # First successful cycle (no prior grades) always gets a full report.
-    has_history = bool(previous_grades)
-    no_change_digest = bool(
-        grade_change_only and has_history and not changes
-    )
-
     unsubscribe_url = None
     try:
         token = ensure_unsubscribe_token(row)
@@ -272,38 +258,9 @@ def dispatch_user(row: dict, quote_cache: dict[str, dict[str, Any]]) -> bool:
         )
 
     sent_at = datetime.now(timezone.utc)
-    day = sent_at.strftime("%Y-%m-%d")
-    if no_change_digest:
-        subject = f"Stock Agent — No grade changes - {day}"
-        text_body = format_no_change_text(email, quotes, unsubscribe_url=unsubscribe_url)
-        html_body = format_report_html(
-            email,
-            quotes,
-            unsubscribe_url=unsubscribe_url,
-            no_change_digest=True,
-        )
-    else:
-        if changes and grade_change_only:
-            subject = f"Stock Agent — Grade changes - {day}"
-        else:
-            subject = f"Stock Agent Report - {day}"
-        text_body = format_report_text(email, quotes, unsubscribe_url=unsubscribe_url)
-        if changes:
-            text_body = (
-                "GRADE CHANGES\n"
-                + "\n".join(
-                    f"- {c['ticker']}: {c['from']} → {c['to']}" for c in changes
-                )
-                + "\n\n"
-                + text_body
-            )
-        html_body = format_report_html(
-            email,
-            quotes,
-            unsubscribe_url=unsubscribe_url,
-            changes=changes or None,
-            no_change_digest=False,
-        )
+    subject = f"Stock Agent Report - {sent_at.strftime('%Y-%m-%d')}"
+    text_body = format_report_text(email, quotes, unsubscribe_url=unsubscribe_url)
+    html_body = format_report_html(email, quotes, unsubscribe_url=unsubscribe_url)
 
     result = send_report_email(
         email,
@@ -340,14 +297,6 @@ def dispatch_user(row: dict, quote_cache: dict[str, dict[str, Any]]) -> bool:
         except Exception:
             logger.exception(
                 "Email sent to %s but failed to persist last_sent_at id=%s",
-                email,
-                user_id,
-            )
-        try:
-            update_user_last_grades(user_id, current_grades)
-        except Exception:
-            logger.exception(
-                "Email sent to %s but failed to persist last_grades id=%s",
                 email,
                 user_id,
             )

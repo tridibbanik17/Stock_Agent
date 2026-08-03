@@ -336,42 +336,6 @@ button.add-time-btn {
   color: var(--text);
 }
 
-.recover-panel {
-  display: grid;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-}
-
-.recover-panel[hidden] {
-  display: none;
-}
-
-.recover-copy {
-  margin: 0;
-  font-size: 0.72rem;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.ownership-label {
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-#manage-token-input {
-  width: 100%;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-}
-
-button.recover-btn {
-  justify-self: start;
-  font-size: 0.74rem;
-  padding: 6px 10px;
-}
-
 .add-row {
   display: grid;
   grid-template-columns: 1fr auto;

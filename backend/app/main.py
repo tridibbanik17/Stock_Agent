@@ -83,7 +83,6 @@ async def root() -> dict[str, str]:
         "health": "/health",
         "docs": "/docs",
         "subscribe": "POST /api/subscribe",
-        "recover": "POST /api/subscribe/recover",
         "unsubscribe": "GET|POST|DELETE /api/unsubscribe",
         "quotes": "POST /api/quotes/snapshot",
     }

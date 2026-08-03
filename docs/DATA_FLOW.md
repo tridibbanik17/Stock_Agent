@@ -6,8 +6,8 @@
 Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 ```
 
-- **Supabase** stores only email, tickers, schedule, `last_sent_at`, `unsubscribe_token`, and `manage_token` (not holdings, not grades).
-- **Subscription ownership:** updates to an existing email require `manageToken` (stored in the extension). Lost token → `POST /api/subscribe/recover` emails a one-time reclaim link.
+- **Supabase** stores only email, tickers, schedule, `last_sent_at`, and `unsubscribe_token` (not holdings, not grades).
+- **Subscribe** is email-keyed upsert: Save & Subscribe overwrites that address’s watchlist and schedule.
 - **Delivery audit:** each cron send writes a `delivery_logs` row (`success` / `failure` / `dry_run`, Resend id, truncated error) — query in Supabase instead of digging through Actions logs.
 - **HTML email:** cron always sends a full HTML report (plus plain-text fallback) on schedule.
 - **Hosted API:** production FastAPI via Docker / Render (`docs/DEPLOY.md`). Extension switches with `USE_LOCAL_API` in `extension/lib/config.js`.
@@ -40,8 +40,7 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 | Endpoint | Job |
 |----------|-----|
 | `POST /api/quotes/snapshot` | yfinance + grade for popup **Refresh** |
-| `POST /api/subscribe` | Save email / tickers / schedule (updates need `manageToken`) |
-| `POST /api/subscribe/recover` (+ confirm GET) | Reclaim ownership via email if the extension lost `manageToken` |
+| `POST /api/subscribe` | Save email / tickers / schedule (upsert by email) |
 | `GET` / `POST` / `DELETE /api/unsubscribe` | Soft-disable emails via opaque `unsubscribe_token` |
 
 Rate limits (per IP, in-process): subscribe ~10/min, snapshot ~30/min, unsubscribe ~30/min. Also rejects non-JSON POST bodies and payloads over `MAX_REQUEST_BODY_BYTES`.

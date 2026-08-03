@@ -1,8 +1,8 @@
 # Hosted API (production FastAPI)
 
-The Chrome extension talks to FastAPI for quotes, subscribe, recover, and unsubscribe.
+The Chrome extension talks to FastAPI for quotes, subscribe, and unsubscribe.
 Cron (GitHub Actions) talks to Supabase + Resend directly; it needs `PUBLIC_API_BASE_URL`
-so email unsubscribe / recover links point at the **same** public API.
+so email unsubscribe links point at the **same** public API.
 
 ## Option A — Render (recommended free tier)
 
