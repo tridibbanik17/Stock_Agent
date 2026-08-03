@@ -69,6 +69,7 @@ function formatApiDetail(detail) {
 
 /**
  * Upsert delivery preferences via POST /api/subscribe.
+ * Sends manageToken when present so strangers cannot overwrite the profile.
  * @param {import("./storage.js").LocalState | object} localState
  */
 export async function subscribeDelivery(localState) {
@@ -81,14 +82,35 @@ export async function subscribeDelivery(localState) {
     throw new Error("Add at least one ticker before enabling email delivery");
   }
 
+  /** @type {Record<string, unknown>} */
+  const body = {
+    email: payload.email,
+    watchlist: payload.watchlist,
+    schedule: payload.schedule,
+    enabled: payload.enabled,
+  };
+  if (payload.manageToken) {
+    body.manageToken = payload.manageToken;
+  }
+
   return request("/api/subscribe", {
     method: "POST",
-    body: JSON.stringify({
-      email: payload.email,
-      watchlist: payload.watchlist,
-      schedule: payload.schedule,
-      enabled: payload.enabled,
-    }),
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Email a one-time recovery link to reclaim manageToken.
+ * @param {string} email
+ */
+export async function recoverSubscription(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized || !normalized.includes("@")) {
+    throw new Error("Enter a valid email to recover ownership");
+  }
+  return request("/api/subscribe/recover", {
+    method: "POST",
+    body: JSON.stringify({ email: normalized }),
   });
 }
 

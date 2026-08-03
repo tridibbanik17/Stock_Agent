@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from supabase import Client, create_client
@@ -15,6 +15,11 @@ from app.models.schemas import SubscribeRequest
 logger = logging.getLogger("stock_agent.supabase")
 
 _client: Client | None = None
+RECOVER_TTL = timedelta(hours=1)
+
+
+class OwnershipError(PermissionError):
+    """Caller failed manage_token ownership check."""
 
 
 def get_supabase() -> Client:
@@ -26,14 +31,31 @@ def get_supabase() -> Client:
     return _client
 
 
-def _normalize_token(token: str) -> str:
+def _normalize_uuid_token(token: str, *, label: str) -> str:
     text = (token or "").strip()
     if not text:
-        raise ValueError("unsubscribe token is required")
+        raise ValueError(f"{label} is required")
     try:
         return str(uuid.UUID(text))
     except ValueError as exc:
-        raise ValueError("unsubscribe token must be a valid UUID") from exc
+        raise ValueError(f"{label} must be a valid UUID") from exc
+
+
+def _normalize_token(token: str) -> str:
+    return _normalize_uuid_token(token, label="unsubscribe token")
+
+
+def get_user_by_email(email: str) -> dict[str, Any] | None:
+    client = get_supabase()
+    result = (
+        client.table("users")
+        .select("*")
+        .eq("email", str(email).strip().lower())
+        .limit(1)
+        .execute()
+    )
+    data = result.data or []
+    return data[0] if data else None
 
 
 def mark_user_sent(user_id: str, sent_at: datetime | None = None) -> None:
@@ -88,6 +110,37 @@ def ensure_unsubscribe_token(row: dict[str, Any]) -> str:
     return str(row["unsubscribe_token"])
 
 
+def ensure_manage_token(row: dict[str, Any]) -> str:
+    existing = row.get("manage_token")
+    if existing:
+        return str(existing)
+
+    user_id = str(row.get("id") or "")
+    if not user_id:
+        raise ValueError("user id is required to create manage_token")
+
+    token = str(uuid.uuid4())
+    client = get_supabase()
+    try:
+        result = (
+            client.table("users")
+            .update({"manage_token": token})
+            .eq("id", user_id)
+            .execute()
+        )
+    except Exception:
+        logger.exception("Failed to set manage_token for id=%s", user_id)
+        raise
+
+    data = result.data or []
+    if data:
+        row["manage_token"] = data[0].get("manage_token") or token
+    else:
+        row["manage_token"] = token
+    logger.info("Created manage_token for id=%s", user_id)
+    return str(row["manage_token"])
+
+
 def disable_subscription_by_token(token: str) -> dict[str, Any]:
     """
     Soft-disable delivery (enabled=false) for the matching unsubscribe token.
@@ -123,8 +176,10 @@ def disable_subscription_by_token(token: str) -> dict[str, Any]:
 def upsert_user_subscription(payload: SubscribeRequest) -> dict[str, Any]:
     """
     Insert or update a user delivery profile keyed by email.
+
+    New email → create + issue manage_token (returned to the extension).
+    Existing email → require matching manageToken or raise OwnershipError.
     Never writes holdings, buy prices, or API keys.
-    Does not overwrite unsubscribe_token on update.
     """
     row = {
         "email": payload.email,
@@ -136,50 +191,195 @@ def upsert_user_subscription(payload: SubscribeRequest) -> dict[str, Any]:
         "enabled": payload.enabled,
     }
 
-    # Defense-in-depth: refuse if private keys ever appear.
-    forbidden = {"holdings", "shares", "buyPrice", "buy_price", "geminiApiKey", "gemini_api_key"}
+    forbidden = {
+        "holdings",
+        "shares",
+        "buyPrice",
+        "buy_price",
+        "geminiApiKey",
+        "gemini_api_key",
+    }
     leaked = forbidden.intersection(row)
     if leaked:
         raise ValueError(f"Refusing to persist private fields: {sorted(leaked)}")
 
-    logger.info(
-        "Upserting delivery profile email=%s tickers=%d frequency=%s hours=%s",
-        payload.email,
-        len(payload.watchlist),
-        payload.schedule.frequency,
-        payload.schedule.times,
-    )
-
+    existing = get_user_by_email(payload.email)
     client = get_supabase()
-    try:
-        result = (
-            client.table("users")
-            .upsert(row, on_conflict="email")
-            .execute()
+
+    if existing:
+        stored = ensure_manage_token(existing)
+        presented = (payload.manageToken or "").strip()
+        if not presented:
+            raise OwnershipError(
+                "This email already has a subscription. "
+                "Provide manageToken from this device, or use Recover access."
+            )
+        try:
+            presented_norm = _normalize_uuid_token(presented, label="manageToken")
+        except ValueError as exc:
+            raise OwnershipError(str(exc)) from exc
+        if presented_norm != str(uuid.UUID(str(stored))):
+            raise OwnershipError(
+                "manageToken does not match this subscription. "
+                "Use Recover access if you lost the extension data."
+            )
+
+        logger.info(
+            "Updating delivery profile email=%s tickers=%d (ownership ok)",
+            payload.email,
+            len(payload.watchlist),
         )
-    except Exception:
-        logger.exception("Supabase upsert failed for email=%s", payload.email)
-        raise
+        try:
+            result = (
+                client.table("users")
+                .update(row)
+                .eq("id", existing["id"])
+                .execute()
+            )
+        except Exception:
+            logger.exception("Supabase update failed for email=%s", payload.email)
+            raise
+    else:
+        manage_token = str(uuid.uuid4())
+        unsubscribe_token = str(uuid.uuid4())
+        insert_row = {
+            **row,
+            "manage_token": manage_token,
+            "unsubscribe_token": unsubscribe_token,
+        }
+        logger.info(
+            "Creating delivery profile email=%s tickers=%d",
+            payload.email,
+            len(payload.watchlist),
+        )
+        try:
+            result = client.table("users").insert(insert_row).execute()
+        except Exception:
+            logger.exception("Supabase insert failed for email=%s", payload.email)
+            raise
 
     data = result.data
     if not data:
-        logger.error("Supabase upsert returned empty data for email=%s", payload.email)
-        raise RuntimeError("Database upsert returned no rows")
+        logger.error("Supabase write returned empty data for email=%s", payload.email)
+        raise RuntimeError("Database write returned no rows")
 
     record = data[0] if isinstance(data, list) else data
-    # New installs rely on DB default; legacy rows may still lack a token.
     if not record.get("unsubscribe_token"):
         try:
             ensure_unsubscribe_token(record)
         except Exception:
             logger.exception(
-                "Upsert OK but could not ensure unsubscribe_token for email=%s",
+                "Write OK but could not ensure unsubscribe_token for email=%s",
                 payload.email,
             )
+    if not record.get("manage_token"):
+        try:
+            ensure_manage_token(record)
+        except Exception:
+            logger.exception(
+                "Write OK but could not ensure manage_token for email=%s",
+                payload.email,
+            )
+
     logger.info(
-        "Upsert OK id=%s email=%s updated_at=%s",
+        "Subscribe OK id=%s email=%s updated_at=%s",
         record.get("id"),
         record.get("email"),
         record.get("updated_at"),
     )
     return record
+
+
+def start_subscription_recovery(email: str) -> tuple[dict[str, Any] | None, str | None]:
+    """
+    Issue a one-time recover_token for an existing subscription.
+    Returns (row, recover_token). If email unknown, returns (None, None)
+    without leaking existence to the caller (route still returns generic OK).
+    """
+    existing = get_user_by_email(email)
+    if not existing:
+        return None, None
+
+    token = str(uuid.uuid4())
+    expires = datetime.now(timezone.utc) + RECOVER_TTL
+    client = get_supabase()
+    try:
+        result = (
+            client.table("users")
+            .update(
+                {
+                    "recover_token": token,
+                    "recover_token_expires_at": expires.isoformat(),
+                }
+            )
+            .eq("id", existing["id"])
+            .execute()
+        )
+    except Exception:
+        logger.exception("Failed to set recover_token for email=%s", email)
+        raise
+
+    data = result.data or []
+    record = data[0] if data else existing
+    logger.info("Recovery started for email=%s expires=%s", email, expires.isoformat())
+    return record, token
+
+
+def complete_subscription_recovery(recover_token: str) -> dict[str, Any]:
+    """
+    Validate recover_token, rotate manage_token, clear recover fields.
+    Returns the updated row including the new manage_token.
+    """
+    normalized = _normalize_uuid_token(recover_token, label="recover token")
+    client = get_supabase()
+    result = (
+        client.table("users")
+        .select("*")
+        .eq("recover_token", normalized)
+        .limit(1)
+        .execute()
+    )
+    data = result.data or []
+    if not data:
+        raise LookupError("Invalid or expired recovery link")
+
+    row = data[0]
+    expires_raw = row.get("recover_token_expires_at")
+    if expires_raw:
+        text = str(expires_raw).strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            expires = datetime.fromisoformat(text)
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > expires:
+                raise LookupError("Recovery link has expired. Request a new one.")
+        except LookupError:
+            raise
+        except ValueError:
+            logger.warning("Bad recover_token_expires_at=%r", expires_raw)
+
+    new_manage = str(uuid.uuid4())
+    try:
+        updated = (
+            client.table("users")
+            .update(
+                {
+                    "manage_token": new_manage,
+                    "recover_token": None,
+                    "recover_token_expires_at": None,
+                }
+            )
+            .eq("id", row["id"])
+            .execute()
+        )
+    except Exception:
+        logger.exception("Failed to rotate manage_token for id=%s", row.get("id"))
+        raise
+
+    out = (updated.data or [None])[0]
+    if not out:
+        raise RuntimeError("Recovery update returned no rows")
+    logger.info("Recovery complete email=%s id=%s", out.get("email"), out.get("id"))
+    return out

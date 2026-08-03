@@ -49,6 +49,9 @@ def get_settings() -> dict:
         "rate_limit_unsubscribe_per_min": int(
             os.getenv("RATE_LIMIT_UNSUBSCRIBE_PER_MIN", "30")
         ),
+        "rate_limit_recover_per_min": int(
+            os.getenv("RATE_LIMIT_RECOVER_PER_MIN", "5")
+        ),
         "rate_limit_window_seconds": float(
             os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")
         ),

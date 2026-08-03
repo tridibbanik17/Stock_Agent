@@ -113,6 +113,55 @@ def format_report_text(
     return "\n".join(lines)
 
 
+def send_plain_email(to_email: str, subject: str, body: str) -> bool:
+    """Send a plain-text email via Resend, or dry-run log when unset."""
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    from_addr = os.getenv("REPORT_FROM_EMAIL", "Stock Agent <onboarding@resend.dev>").strip()
+
+    if not api_key:
+        logger.warning(
+            "RESEND_API_KEY unset - dry-run email to %s\nSubject: %s\n%s",
+            to_email,
+            subject,
+            body[:2000],
+        )
+        return True
+
+    payload: dict[str, Any] = {
+        "from": from_addr,
+        "to": [to_email],
+        "subject": subject,
+        "text": body,
+    }
+    try:
+        response = httpx.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=30.0,
+        )
+        if response.status_code >= 400:
+            logger.error(
+                "Resend failed status=%s body=%s",
+                response.status_code,
+                response.text[:500],
+            )
+            return False
+        data = {}
+        try:
+            data = response.json()
+        except Exception:
+            pass
+        logger.info("Resend OK to=%s id=%s", to_email, data.get("id"))
+        return True
+    except Exception:
+        logger.exception("Resend request failed for %s", to_email)
+        return False
+
+
 def send_report_email(
     to_email: str,
     subject: str,

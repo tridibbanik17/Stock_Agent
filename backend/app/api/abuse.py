@@ -75,6 +75,7 @@ def rate_limit(bucket: str) -> Callable:
             "subscribe": int(settings.get("rate_limit_subscribe_per_min") or 10),
             "snapshot": int(settings.get("rate_limit_snapshot_per_min") or 30),
             "unsubscribe": int(settings.get("rate_limit_unsubscribe_per_min") or 30),
+            "recover": int(settings.get("rate_limit_recover_per_min") or 5),
         }
         limit = limits.get(bucket, 30)
         window = float(settings.get("rate_limit_window_seconds") or 60)
@@ -127,9 +128,17 @@ async def protect_unsubscribe(request: Request) -> None:
     await rate_limit("unsubscribe")(request)
 
 
+async def protect_recover(request: Request) -> None:
+    if request.method in {"POST", "PUT", "PATCH"}:
+        enforce_body_size(request)
+        enforce_json_content_type(request)
+    await rate_limit("recover")(request)
+
+
 ProtectSubscribe = Annotated[None, Depends(protect_subscribe)]
 ProtectSnapshot = Annotated[None, Depends(protect_snapshot)]
 ProtectUnsubscribe = Annotated[None, Depends(protect_unsubscribe)]
+ProtectRecover = Annotated[None, Depends(protect_recover)]
 
 
 def rate_limit_headers(request: Request) -> dict[str, str]:

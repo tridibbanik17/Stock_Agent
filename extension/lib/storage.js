@@ -10,6 +10,7 @@
  *   watchlist: string[]  (max 25)
  *   delivery: { email, schedule: ScheduleConfig, enabled }
  *   userId: string|null
+ *   manageToken: string|null  (ownership proof for POST /api/subscribe updates)
  *
  * ScheduleConfig.days uses JS getDay() convention: 0=Sun … 6=Sat.
  */
@@ -33,14 +34,16 @@ export const MAX_SEND_TIMES = 8;
  *   autoAnalyze: boolean,
  *   watchlist: string[],
  *   delivery: DeliveryPrefs,
- *   userId: string|null
+ *   userId: string|null,
+ *   manageToken: string|null
  * }} LocalState */
 /** @typedef {{
  *   email: string,
  *   watchlist: string[],
  *   schedule: ScheduleConfig,
  *   enabled: boolean,
- *   userId: string|null
+ *   userId: string|null,
+ *   manageToken: string|null
  * }} CloudPayload */
 
 export const MAX_WATCHLIST = 25;
@@ -73,6 +76,7 @@ const STORAGE_KEYS = Object.freeze({
   watchlist: "watchlist",
   delivery: "delivery",
   userId: "userId",
+  manageToken: "manageToken",
 });
 
 /** @returns {string} */
@@ -276,6 +280,7 @@ const DEFAULTS = Object.freeze({
     enabled: false,
   }),
   userId: null,
+  manageToken: null,
 });
 
 /** Keys that must never appear on an outbound cloud payload. */
@@ -504,12 +509,13 @@ export async function getLocalState(keys = null) {
           enabled: false,
         },
     userId: typeof stored.userId === "string" ? stored.userId : null,
+    manageToken: typeof stored.manageToken === "string" ? stored.manageToken : null,
   };
 }
 
 /**
  * Cache cloud-eligible fields after a (future) successful API sync.
- * @param {{ watchlist?: string[], delivery?: DeliveryPrefs, userId?: string|null }} patch
+ * @param {{ watchlist?: string[], delivery?: DeliveryPrefs, userId?: string|null, manageToken?: string|null }} patch
  */
 export async function cacheCloudProfile(patch) {
   /** @type {Record<string, unknown>} */
@@ -528,6 +534,12 @@ export async function cacheCloudProfile(patch) {
     };
   }
   if ("userId" in patch) write.userId = patch.userId ?? null;
+  if ("manageToken" in patch) {
+    write.manageToken =
+      typeof patch.manageToken === "string" && patch.manageToken.trim()
+        ? patch.manageToken.trim()
+        : null;
+  }
   if (Object.keys(write).length) await chrome.storage.local.set(write);
   return write;
 }
@@ -560,6 +572,7 @@ export function buildCloudPayload(state) {
     schedule,
     enabled: Boolean(state?.delivery?.enabled),
     userId: typeof state?.userId === "string" ? state.userId : null,
+    manageToken: typeof state?.manageToken === "string" ? state.manageToken : null,
   };
 
   return payload;
@@ -590,7 +603,14 @@ export function assertNoPrivateLeak(payload) {
   }
 
   // Allow-list enforcement: only these keys may exist at the root.
-  const allowed = new Set(["email", "watchlist", "schedule", "enabled", "userId"]);
+  const allowed = new Set([
+    "email",
+    "watchlist",
+    "schedule",
+    "enabled",
+    "userId",
+    "manageToken",
+  ]);
   for (const key of Object.keys(payload)) {
     if (!allowed.has(key)) {
       throw new Error(`Refusing unexpected cloud field: ${key}`);

@@ -154,6 +154,22 @@
         <button type="button" id="subscribe-btn" class="primary">
           Save &amp; Subscribe
         </button>
+        <div class="ownership-row">
+          <label class="ownership-label" for="manage-token-input">
+            Ownership token
+            <span class="muted-hint">(auto-saved; paste after email recovery)</span>
+          </label>
+          <input
+            id="manage-token-input"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Issued on first subscribe"
+          />
+          <button type="button" id="recover-btn" class="ghost recover-btn">
+            Email recovery link
+          </button>
+        </div>
         <p
           id="status-subscribe"
           class="status status-inline"

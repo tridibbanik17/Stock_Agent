@@ -62,7 +62,7 @@ API docs: http://127.0.0.1:8000/docs
 
 Apply schema once in the Supabase SQL Editor using `backend/database_schema.sql`, then enable RLS and lock grants for `anon` / `authenticated` (service role only for the API).
 
-Existing databases: also run `backend/migrations/001_add_last_sent_at.sql` and `backend/migrations/002_add_unsubscribe_token.sql` so cron can dedupe overlapping sends and emails can one-click unsubscribe.
+Existing databases: also run `backend/migrations/001_add_last_sent_at.sql`, `backend/migrations/002_add_unsubscribe_token.sql`, and `backend/migrations/003_add_manage_token.sql` so cron can dedupe, emails can unsubscribe, and subscribe updates require ownership.
 
 ### 2. Chrome extension
 
@@ -108,7 +108,9 @@ Always `git pull` before new work so you pick up the bot bump commit.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/subscribe` | Upsert email delivery preferences |
+| `POST /api/subscribe` | Upsert email delivery preferences (requires `manageToken` after first create) |
+| `POST /api/subscribe/recover` | Email a one-time link to reclaim ownership |
+| `GET /api/subscribe/recover/confirm?token=…` | Rotate `manageToken` and show it for the extension |
 | `GET /api/unsubscribe?token=…` | One-click unsubscribe (email link; sets `enabled=false`) |
 | `POST /api/unsubscribe` | Same via JSON `{ "token" }` or `?token=` |
 | `DELETE /api/unsubscribe/{token}` | Same via path token |

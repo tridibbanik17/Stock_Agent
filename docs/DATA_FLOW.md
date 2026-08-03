@@ -6,7 +6,8 @@
 Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 ```
 
-- **Supabase** stores only email, tickers, schedule, `last_sent_at`, and `unsubscribe_token` (not holdings, not grades).
+- **Supabase** stores only email, tickers, schedule, `last_sent_at`, `unsubscribe_token`, and `manage_token` (not holdings, not grades).
+- **Subscription ownership:** updates to an existing email require `manageToken` (stored in the extension). Lost token → `POST /api/subscribe/recover` emails a one-time reclaim link.
 - **Cron dedupe:** after a successful send, `last_sent_at` is stamped so overlapping/retry ticks skip that preferred-hour slot. A later slot the same day still sends.
 - **Cron shared quote cache:** each tick unions matched users’ tickers, fetches/grades each symbol once, then reuses those quotes for every email (avoids N× yfinance hits when watchlists overlap).
 - **Cron fan-out:** matched users are emailed in parallel (`CRON_DISPATCH_WORKERS`, default 8) so one slow Resend call does not block the rest of the tick. News fetches are also parallelized when enabled.
@@ -37,7 +38,8 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 | Endpoint | Job |
 |----------|-----|
 | `POST /api/quotes/snapshot` | yfinance + grade for popup **Refresh** |
-| `POST /api/subscribe` | Save email / tickers / schedule to Supabase (no market data) |
+| `POST /api/subscribe` | Save email / tickers / schedule (updates need `manageToken`) |
+| `POST /api/subscribe/recover` (+ confirm GET) | Reclaim ownership via email if the extension lost `manageToken` |
 | `GET` / `POST` / `DELETE /api/unsubscribe` | Soft-disable emails via opaque `unsubscribe_token` |
 
 Rate limits (per IP, in-process): subscribe ~10/min, snapshot ~30/min, unsubscribe ~30/min. Also rejects non-JSON POST bodies and payloads over `MAX_REQUEST_BODY_BYTES`.

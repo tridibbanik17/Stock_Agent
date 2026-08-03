@@ -31,6 +31,13 @@ create table if not exists public.users (
   -- One-click unsubscribe (opaque; never email-guessable)
   unsubscribe_token uuid not null default gen_random_uuid(),
 
+  -- Ownership proof required to update watchlist/schedule (returned to extension)
+  manage_token uuid not null default gen_random_uuid(),
+
+  -- Short-lived email recovery (reclaim manage_token if extension storage is lost)
+  recover_token uuid,
+  recover_token_expires_at timestamptz,
+
   -- Cron send dedupe: set after a successful email for a preferred-hour slot
   last_sent_at timestamptz,
 
@@ -39,6 +46,7 @@ create table if not exists public.users (
 
   constraint users_email_unique unique (email),
   constraint users_unsubscribe_token_unique unique (unsubscribe_token),
+  constraint users_manage_token_unique unique (manage_token),
   constraint users_email_format check (position('@' in email) > 1),
   constraint users_watchlist_cap check (cardinality(watchlist) <= 25),
   constraint users_hours_cap check (cardinality(preferred_hours) <= 8),
@@ -85,3 +93,9 @@ comment on column public.users.last_sent_at is
 
 comment on column public.users.unsubscribe_token is
   'Opaque token for one-click email unsubscribe (GET/POST/DELETE /api/unsubscribe).';
+
+comment on column public.users.manage_token is
+  'Opaque ownership token; required on POST /api/subscribe updates. Stored in the extension.';
+
+comment on column public.users.recover_token is
+  'One-time email recovery token to rotate manage_token if the extension lost it.';
