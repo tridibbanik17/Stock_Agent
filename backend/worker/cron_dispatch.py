@@ -5,7 +5,7 @@ Every ~15 minutes (offset :04/:19/:34/:49):
   1. Load enabled users from Supabase
   2. Match timezone + days + preferred_hours window
   3. Skip if last_sent_at already covers that preferred-hour slot
-  4. Grade watchlist (yfinance + trusted news flags)
+  4. Grade each unique ticker once (shared quote cache for this tick)
   5. Email report via Resend (or dry-run log), then stamp last_sent_at
 """
 
@@ -16,6 +16,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 # Allow `python backend/worker/cron_dispatch.py` from repo root.
@@ -155,29 +156,94 @@ def load_enabled_users() -> list[dict]:
     return data
 
 
-def dispatch_user(row: dict) -> bool:
+def normalize_watchlist(raw: list | None) -> list[str]:
+    out: list[str] = []
+    for item in raw or []:
+        ticker = str(item).strip().upper()
+        if ticker and ticker not in out:
+            out.append(ticker)
+    return out
+
+
+def collect_unique_tickers(rows: list[dict]) -> list[str]:
+    """Union of watchlists for users matched this tick (stable order)."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for row in rows:
+        for ticker in normalize_watchlist(row.get("watchlist")):
+            if ticker not in seen:
+                seen.add(ticker)
+                ordered.append(ticker)
+    return ordered
+
+
+def _should_skip_news() -> bool:
+    return bool(os.getenv("GITHUB_ACTIONS")) or os.getenv(
+        "STOCK_AGENT_SKIP_NEWS", ""
+    ).lower() in {"1", "true", "yes"}
+
+
+def build_shared_quote_cache(tickers: list[str]) -> dict[str, dict[str, Any]]:
+    """
+    Fetch + grade each ticker once for this cron tick.
+    Shared across all matched users so overlapping watchlists do not re-hit yfinance.
+    """
+    if not tickers:
+        return {}
+
+    logger.info("Building shared quote cache for %d unique ticker(s)", len(tickers))
+    metrics = analyze_watchlist(tickers, max_tickers=None)
+    news_flags: dict[str, list[str]] = {}
+    if not _should_skip_news():
+        try:
+            news_flags = fetch_news_for_watchlist(tickers)
+        except Exception:
+            logger.exception("News fetch failed; continuing without news flags")
+    graded = attach_grades(metrics, news_flags)
+    cache = {str(q.get("ticker", "")).upper(): q for q in graded if q.get("ticker")}
+    logger.info("Shared quote cache ready size=%d", len(cache))
+    return cache
+
+
+def quotes_from_cache(
+    watchlist: list[str], cache: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Preserve each user's watchlist order; stub any rare cache miss."""
+    quotes: list[dict[str, Any]] = []
+    for ticker in watchlist:
+        key = ticker.upper()
+        hit = cache.get(key)
+        if hit is not None:
+            quotes.append(hit)
+            continue
+        quotes.append(
+            {
+                "ticker": key,
+                "price": None,
+                "currency": "USD",
+                "verdict": "n/a",
+                "grade": "HOLD",
+                "notes": ["No shared cache entry for this ticker in this cron tick."],
+                "error": "cache_miss",
+            }
+        )
+    return quotes
+
+
+def dispatch_user(row: dict, quote_cache: dict[str, dict[str, Any]]) -> bool:
     email = row.get("email")
-    watchlist = list(row.get("watchlist") or [])
+    watchlist = normalize_watchlist(row.get("watchlist"))
     user_id = str(row.get("id") or "")
     if not email or not watchlist:
         logger.warning("Skipping user id=%s - missing email or watchlist", row.get("id"))
         return False
 
-    logger.info("Dispatching report to %s (%d tickers)", email, len(watchlist))
-    metrics = analyze_watchlist(watchlist)
-    # GoogleNews is flaky on CI / datacenter IPs; skip unless explicitly enabled.
-    skip_news = os.getenv("GITHUB_ACTIONS") or os.getenv("STOCK_AGENT_SKIP_NEWS", "").lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-    news_flags: dict[str, list[str]] = {}
-    if not skip_news:
-        try:
-            news_flags = fetch_news_for_watchlist(watchlist)
-        except Exception:
-            logger.exception("News fetch failed; continuing without news flags")
-    quotes = attach_grades(metrics, news_flags)
+    logger.info(
+        "Dispatching report to %s (%d tickers, shared cache)",
+        email,
+        len(watchlist),
+    )
+    quotes = quotes_from_cache(watchlist, quote_cache)
     unsubscribe_url = None
     try:
         token = ensure_unsubscribe_token(row)
@@ -254,15 +320,25 @@ def main() -> int:
         )
         return 0
 
+    matched_rows = [row for row, _ in matched]
+    unique_tickers = collect_unique_tickers(matched_rows)
     logger.info(
-        "Matched %d user(s) for delivery (dedupe_skips=%d)",
+        "Matched %d user(s) for delivery (dedupe_skips=%d, unique_tickers=%d)",
         len(matched),
         skipped_dedupe,
+        len(unique_tickers),
     )
+
+    try:
+        quote_cache = build_shared_quote_cache(unique_tickers)
+    except Exception:
+        logger.exception("Shared quote cache build failed")
+        return 1
+
     failures = 0
-    for row, preferred in matched:
+    for row, _preferred in matched:
         try:
-            ok = dispatch_user(row)
+            ok = dispatch_user(row, quote_cache)
             if not ok:
                 failures += 1
         except Exception:

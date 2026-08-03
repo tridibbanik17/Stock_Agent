@@ -232,17 +232,28 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
         }
 
 
-def analyze_watchlist(tickers: list[str], max_workers: int = 6) -> list[dict[str, Any]]:
-    """Parallel fetch for a watchlist (max 25)."""
+def analyze_watchlist(
+    tickers: list[str],
+    max_workers: int = 6,
+    max_tickers: int | None = 25,
+) -> list[dict[str, Any]]:
+    """
+    Parallel fetch for a watchlist.
+
+    `max_tickers` defaults to 25 for the popup API. Pass None (or a higher
+    limit) for cron so one tick can grade the union of many users' symbols.
+    """
     unique = []
     for raw in tickers:
         t = str(raw).strip().upper()
         if t and t not in unique:
             unique.append(t)
-    unique = unique[:25]
+    if max_tickers is not None:
+        unique = unique[:max_tickers]
     if not unique:
         return []
 
+    logger.info("Fetching market data for %d unique ticker(s)", len(unique))
     results: dict[str, dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=min(max_workers, len(unique))) as pool:
         futures = {pool.submit(analyze_ticker, t): t for t in unique}
