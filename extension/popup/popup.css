@@ -595,8 +595,9 @@ button.remove {
   padding: 0;
   display: grid;
   gap: 5px;
-  max-height: 280px;
-  overflow: auto;
+  /* Single scrollbar: grow with tickers; body (.shell parent) scrolls the popup. */
+  max-height: none;
+  overflow: visible;
 }
 
 .ticker-card {
