@@ -34,6 +34,8 @@ Privacy-first Chrome extension for retail traders: keep a watchlist, see live gr
 
 How quotes, grades, and email fields are produced (yfinance vs our grader vs Supabase): see **[docs/DATA_FLOW.md](docs/DATA_FLOW.md)**.
 
+Ticker autocomplete coverage (NASDAQ / NYSE / TSX counts): see **[docs/TICKER_CATALOG.md](docs/TICKER_CATALOG.md)**.
+
 ## Repository layout
 
 ```
