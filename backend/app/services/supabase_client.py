@@ -383,3 +383,46 @@ def complete_subscription_recovery(recover_token: str) -> dict[str, Any]:
         raise RuntimeError("Recovery update returned no rows")
     logger.info("Recovery complete email=%s id=%s", out.get("email"), out.get("id"))
     return out
+
+
+def insert_delivery_log(
+    *,
+    email: str,
+    status: str,
+    user_id: str | None = None,
+    resend_id: str | None = None,
+    subject: str | None = None,
+    ticker_count: int | None = None,
+    error: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Append a cron send audit row. Never stores holdings or message bodies.
+    Failures here are logged by the caller; this raises on DB errors.
+    """
+    normalized_status = str(status or "").strip().lower()
+    if normalized_status not in {"success", "failure", "dry_run"}:
+        raise ValueError(f"invalid delivery log status: {status!r}")
+
+    row: dict[str, Any] = {
+        "email": str(email).strip().lower(),
+        "status": normalized_status,
+        "resend_id": (str(resend_id).strip() or None) if resend_id else None,
+        "subject": (str(subject)[:240] if subject else None),
+        "ticker_count": ticker_count,
+        "error": (str(error)[:1000] if error else None),
+    }
+    if user_id:
+        row["user_id"] = str(user_id)
+
+    client = get_supabase()
+    result = client.table("delivery_logs").insert(row).execute()
+    data = result.data or []
+    record = data[0] if data else None
+    logger.info(
+        "Delivery log id=%s email=%s status=%s resend_id=%s",
+        (record or {}).get("id"),
+        row["email"],
+        normalized_status,
+        row.get("resend_id"),
+    )
+    return record

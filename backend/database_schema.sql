@@ -99,3 +99,47 @@ comment on column public.users.manage_token is
 
 comment on column public.users.recover_token is
   'One-time email recovery token to rotate manage_token if the extension lost it.';
+
+-- Cron / Resend delivery audit (no holdings, no email body)
+create table if not exists public.delivery_logs (
+  id uuid primary key default gen_random_uuid(),
+
+  user_id uuid references public.users (id) on delete set null,
+
+  -- Denormalized for easy filtering if the user row is later removed
+  email text not null,
+
+  -- success | failure | dry_run
+  status text not null,
+
+  -- Resend message id when provider accepted the send
+  resend_id text,
+
+  subject text,
+  ticker_count integer,
+
+  -- Truncated provider / exception detail on failure
+  error text,
+
+  created_at timestamptz not null default now(),
+
+  constraint delivery_logs_status_check check (
+    status in ('success', 'failure', 'dry_run')
+  ),
+  constraint delivery_logs_email_format check (position('@' in email) > 1)
+);
+
+create index if not exists delivery_logs_created_at_idx
+  on public.delivery_logs (created_at desc);
+
+create index if not exists delivery_logs_email_idx
+  on public.delivery_logs (email);
+
+create index if not exists delivery_logs_user_id_idx
+  on public.delivery_logs (user_id);
+
+create index if not exists delivery_logs_status_idx
+  on public.delivery_logs (status);
+
+comment on table public.delivery_logs is
+  'Cron email send audit: success/fail + Resend id. No holdings or message bodies.';

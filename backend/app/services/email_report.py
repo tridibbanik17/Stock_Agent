@@ -4,12 +4,29 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 logger = logging.getLogger("stock_agent.email")
+
+
+@dataclass(frozen=True)
+class SendResult:
+    """Outcome of a report send attempt (for delivery_logs audit)."""
+
+    ok: bool
+    resend_id: str | None = None
+    error: str | None = None
+    dry_run: bool = False
+
+    @property
+    def status(self) -> str:
+        if self.dry_run:
+            return "dry_run"
+        return "success" if self.ok else "failure"
 
 
 def _plain_ticker(ticker: str) -> str:
@@ -167,7 +184,7 @@ def send_report_email(
     subject: str,
     body: str,
     unsubscribe_url: str | None = None,
-) -> bool:
+) -> SendResult:
     """
     Send via Resend HTTP API when RESEND_API_KEY is set.
     Otherwise log the report (dry-run) so cron still exercises the pipeline.
@@ -182,7 +199,7 @@ def send_report_email(
             subject,
             body[:2000],
         )
-        return True
+        return SendResult(ok=True, dry_run=True)
 
     payload: dict[str, Any] = {
         "from": from_addr,
@@ -208,26 +225,27 @@ def send_report_email(
             timeout=30.0,
         )
         if response.status_code >= 400:
+            err = f"Resend HTTP {response.status_code}: {response.text[:300]}"
             logger.error(
                 "Resend failed status=%s body=%s",
                 response.status_code,
                 response.text[:500],
             )
             if os.getenv("GITHUB_ACTIONS"):
-                print(
-                    f"::error::Resend HTTP {response.status_code}: {response.text[:300]}",
-                    flush=True,
-                )
-            return False
-        data = {}
+                print(f"::error::{err}", flush=True)
+            return SendResult(ok=False, error=err)
+        data: dict[str, Any] = {}
         try:
-            data = response.json()
+            parsed = response.json()
+            if isinstance(parsed, dict):
+                data = parsed
         except Exception:
             pass
-        logger.info("Resend OK to=%s id=%s", to_email, data.get("id"))
-        return True
+        resend_id = str(data.get("id") or "").strip() or None
+        logger.info("Resend OK to=%s id=%s", to_email, resend_id)
+        return SendResult(ok=True, resend_id=resend_id)
     except Exception as exc:
         logger.exception("Resend request failed for %s", to_email)
         if os.getenv("GITHUB_ACTIONS"):
             print(f"::error::Resend request exception: {exc}", flush=True)
-        return False
+        return SendResult(ok=False, error=str(exc)[:500])

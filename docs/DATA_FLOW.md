@@ -8,6 +8,7 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 
 - **Supabase** stores only email, tickers, schedule, `last_sent_at`, `unsubscribe_token`, and `manage_token` (not holdings, not grades).
 - **Subscription ownership:** updates to an existing email require `manageToken` (stored in the extension). Lost token → `POST /api/subscribe/recover` emails a one-time reclaim link.
+- **Delivery audit:** each cron send writes a `delivery_logs` row (`success` / `failure` / `dry_run`, Resend id, truncated error) — query in Supabase instead of digging through Actions logs.
 - **Cron dedupe:** after a successful send, `last_sent_at` is stamped so overlapping/retry ticks skip that preferred-hour slot. A later slot the same day still sends.
 - **Cron shared quote cache:** each tick unions matched users’ tickers, fetches/grades each symbol once, then reuses those quotes for every email (avoids N× yfinance hits when watchlists overlap).
 - **Cron fan-out:** matched users are emailed in parallel (`CRON_DISPATCH_WORKERS`, default 8) so one slow Resend call does not block the rest of the tick. News uses Yahoo RSS (CI-safe) with a short disk cache; set `STOCK_AGENT_SKIP_NEWS=1` to disable.

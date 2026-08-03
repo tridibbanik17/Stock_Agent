@@ -41,6 +41,7 @@ from app.services.news import fetch_news_for_watchlist
 from app.services.supabase_client import (
     ensure_unsubscribe_token,
     get_supabase,
+    insert_delivery_log,
     mark_user_sent,
 )
 
@@ -257,15 +258,32 @@ def dispatch_user(row: dict, quote_cache: dict[str, dict[str, Any]]) -> bool:
     body = format_report_text(email, quotes, unsubscribe_url=unsubscribe_url)
     sent_at = datetime.now(timezone.utc)
     subject = f"Stock Agent Report - {sent_at.strftime('%Y-%m-%d')}"
-    ok = send_report_email(
+    result = send_report_email(
         email, subject, body, unsubscribe_url=unsubscribe_url
     )
-    if not ok and os.getenv("GITHUB_ACTIONS"):
+    try:
+        insert_delivery_log(
+            email=str(email),
+            status=result.status,
+            user_id=user_id or None,
+            resend_id=result.resend_id,
+            subject=subject,
+            ticker_count=len(watchlist),
+            error=result.error,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to write delivery_logs for %s status=%s",
+            email,
+            result.status,
+        )
+
+    if not result.ok and os.getenv("GITHUB_ACTIONS"):
         print(
             f"::error::Email send failed for {email}. Check RESEND_API_KEY and REPORT_FROM_EMAIL secrets.",
             flush=True,
         )
-    if ok and user_id:
+    if result.ok and user_id:
         try:
             mark_user_sent(user_id, sent_at)
         except Exception:
@@ -276,7 +294,7 @@ def dispatch_user(row: dict, quote_cache: dict[str, dict[str, Any]]) -> bool:
                 email,
                 user_id,
             )
-    return ok
+    return result.ok
 
 
 def dispatch_worker_count(job_count: int) -> int:
