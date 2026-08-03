@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
@@ -210,7 +212,7 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             "sector": info.get("sector"),
             "industry": info.get("industry"),
             "asOf": as_of,
-            "error": None,
+            "error": None if price is not None else "price_unavailable",
         }
     except Exception as exc:
         logger.exception("yfinance failed for %s", symbol)
@@ -230,6 +232,54 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             "asOf": as_of,
             "error": str(exc),
         }
+
+
+def _quote_needs_retry(result: dict[str, Any]) -> bool:
+    """True when the fetch failed hard or returned no usable price."""
+    if result.get("error") and result.get("error") != "price_unavailable":
+        return True
+    return result.get("price") is None
+
+
+def analyze_ticker_with_retry(
+    ticker: str,
+    *,
+    attempts: int | None = None,
+    backoff_seconds: float | None = None,
+) -> dict[str, Any]:
+    """
+    Call analyze_ticker with short retries (helps transient yfinance empty/rate-limit).
+    Env: QUOTE_FETCH_RETRIES (default 3), QUOTE_FETCH_BACKOFF_SECONDS (default 0.75).
+    """
+    if attempts is None:
+        try:
+            attempts = max(1, int(os.getenv("QUOTE_FETCH_RETRIES", "3")))
+        except ValueError:
+            attempts = 3
+    if backoff_seconds is None:
+        try:
+            backoff_seconds = max(0.0, float(os.getenv("QUOTE_FETCH_BACKOFF_SECONDS", "0.75")))
+        except ValueError:
+            backoff_seconds = 0.75
+
+    last: dict[str, Any] | None = None
+    for attempt in range(1, attempts + 1):
+        last = analyze_ticker(ticker)
+        if not _quote_needs_retry(last):
+            if attempt > 1:
+                logger.info("Quote retry succeeded ticker=%s attempt=%d", ticker, attempt)
+            return last
+        if attempt < attempts:
+            logger.warning(
+                "Quote fetch incomplete ticker=%s attempt=%d/%d error=%s — retrying",
+                ticker,
+                attempt,
+                attempts,
+                last.get("error"),
+            )
+            time.sleep(backoff_seconds * attempt)
+    assert last is not None
+    return last
 
 
 def analyze_watchlist(
@@ -256,7 +306,7 @@ def analyze_watchlist(
     logger.info("Fetching market data for %d unique ticker(s)", len(unique))
     results: dict[str, dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=min(max_workers, len(unique))) as pool:
-        futures = {pool.submit(analyze_ticker, t): t for t in unique}
+        futures = {pool.submit(analyze_ticker_with_retry, t): t for t in unique}
         for fut in as_completed(futures):
             ticker = futures[fut]
             try:
