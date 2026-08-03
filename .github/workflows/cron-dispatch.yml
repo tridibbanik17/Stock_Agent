@@ -53,6 +53,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           REPORT_FROM_EMAIL: ${{ secrets.REPORT_FROM_EMAIL }}
           PUBLIC_API_BASE_URL: ${{ secrets.PUBLIC_API_BASE_URL }}
+          CRON_DISPATCH_WORKERS: "8"
           LOG_LEVEL: INFO
           GITHUB_ACTIONS: "true"
         run: python backend/worker/cron_dispatch.py

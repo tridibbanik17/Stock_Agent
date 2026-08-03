@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
 logger = logging.getLogger("stock_agent.news")
@@ -82,8 +83,27 @@ def fetch_news_flags(ticker: str, max_items: int = 8) -> list[str]:
     return flags[:5]
 
 
-def fetch_news_for_watchlist(tickers: list[str]) -> dict[str, list[str]]:
+def fetch_news_for_watchlist(
+    tickers: list[str], max_workers: int = 6
+) -> dict[str, list[str]]:
+    """Fetch news flags in parallel so one slow ticker does not stall the rest."""
+    unique: list[str] = []
+    for raw in tickers:
+        t = str(raw).strip().upper()
+        if t and t not in unique:
+            unique.append(t)
+    if not unique:
+        return {}
+
+    workers = max(1, min(max_workers, len(unique)))
     out: dict[str, list[str]] = {}
-    for ticker in tickers:
-        out[ticker] = fetch_news_flags(ticker)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(fetch_news_flags, t): t for t in unique}
+        for fut in as_completed(futures):
+            ticker = futures[fut]
+            try:
+                out[ticker] = fut.result()
+            except Exception:
+                logger.exception("News worker failed for %s", ticker)
+                out[ticker] = []
     return out

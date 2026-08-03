@@ -6,7 +6,8 @@ Every ~15 minutes (offset :04/:19/:34/:49):
   2. Match timezone + days + preferred_hours window
   3. Skip if last_sent_at already covers that preferred-hour slot
   4. Grade each unique ticker once (shared quote cache for this tick)
-  5. Email report via Resend (or dry-run log), then stamp last_sent_at
+  5. Fan-out email sends across matched users (parallel workers)
+  6. Stamp last_sent_at after each successful send
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -278,6 +280,51 @@ def dispatch_user(row: dict, quote_cache: dict[str, dict[str, Any]]) -> bool:
     return ok
 
 
+def dispatch_worker_count(job_count: int) -> int:
+    """Parallel email workers; override with CRON_DISPATCH_WORKERS (1–32)."""
+    raw = os.getenv("CRON_DISPATCH_WORKERS", "8").strip()
+    try:
+        configured = int(raw)
+    except ValueError:
+        configured = 8
+    configured = max(1, min(configured, 32))
+    return max(1, min(configured, job_count))
+
+
+def fanout_dispatch(
+    matched_rows: list[dict],
+    quote_cache: dict[str, dict[str, Any]],
+) -> int:
+    """
+    Send reports in parallel so one slow Resend/Supabase call does not stall
+    the rest of the tick. Returns failure count.
+    """
+    if not matched_rows:
+        return 0
+
+    workers = dispatch_worker_count(len(matched_rows))
+    logger.info(
+        "Fan-out dispatch users=%d workers=%d",
+        len(matched_rows),
+        workers,
+    )
+    failures = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(dispatch_user, row, quote_cache): row for row in matched_rows
+        }
+        for fut in as_completed(futures):
+            row = futures[fut]
+            try:
+                ok = fut.result()
+                if not ok:
+                    failures += 1
+            except Exception:
+                failures += 1
+                logger.exception("Dispatch failed for %s", row.get("email"))
+    return failures
+
+
 def main() -> int:
     now = datetime.now(timezone.utc)
     logger.info("Cron tick at %s", now.isoformat())
@@ -335,15 +382,7 @@ def main() -> int:
         logger.exception("Shared quote cache build failed")
         return 1
 
-    failures = 0
-    for row, _preferred in matched:
-        try:
-            ok = dispatch_user(row, quote_cache)
-            if not ok:
-                failures += 1
-        except Exception:
-            failures += 1
-            logger.exception("Dispatch failed for %s", row.get("email"))
+    failures = fanout_dispatch(matched_rows, quote_cache)
 
     logger.info("Cron complete failures=%d / matched=%d", failures, len(matched))
     return 1 if failures else 0
