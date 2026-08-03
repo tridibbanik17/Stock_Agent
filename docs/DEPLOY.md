@@ -61,4 +61,4 @@ Set the same env vars as above, with `TRUST_PROXY=true` and `PUBLIC_API_BASE_URL
 - [ ] Render env: `DISPATCH_SECRET`, Supabase, Resend, `PUBLIC_API_BASE_URL`
 - [ ] Actions secrets: `PUBLIC_API_BASE_URL`, `DISPATCH_SECRET` (same secret as Render)
 - [ ] Manual **Scheduled report dispatch** run succeeds (idle `matched: 0` is OK)
-- [ ] Supabase migration `004_add_delivery_logs.sql` applied (debug skips in `delivery_logs`)
+- [ ] Supabase migrations `004_add_delivery_logs.sql` and `006_add_daily_send_cap.sql` applied

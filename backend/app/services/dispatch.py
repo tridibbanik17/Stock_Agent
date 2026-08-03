@@ -5,6 +5,8 @@ Preferred send time is a deadline:
   - Early window: [preferred − DISPATCH_EARLY_MINUTES, preferred] → send
   - Overdue catch-up: (preferred, preferred + DISPATCH_LATE_MINUTES] → send once
   - Slot dedupe via last_sent_at stamped at the preferred UTC instant
+  - Daily cap: at most MAX_SEND_TIMES successful sends per user local calendar day
+    (independent of schedule edits)
 
 HTTP: POST /api/internal/dispatch-due with X-Dispatch-Secret
 CLI:  python backend/worker/cron_dispatch.py
@@ -19,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from app.models.schemas import MAX_SEND_TIMES
 from app.services.email_report import (
     build_unsubscribe_url,
     format_report_html,
@@ -33,7 +36,7 @@ from app.services.supabase_client import (
     ensure_unsubscribe_token,
     get_supabase,
     insert_delivery_log,
-    mark_user_sent,
+    record_successful_send,
 )
 
 logger = logging.getLogger("stock_agent.dispatch")
@@ -231,6 +234,34 @@ def already_sent_for_slot(row: dict, preferred_local: datetime) -> bool:
     return last >= preferred_utc
 
 
+def user_local_calendar_day(row: dict, now_utc: datetime) -> str:
+    """YYYY-MM-DD in the user's timezone (for daily send caps)."""
+    schedule = user_to_schedule(row)
+    return _local_now(schedule, now_utc).date().isoformat()
+
+
+def daily_send_on_value(row: dict) -> str | None:
+    value = row.get("daily_send_on")
+    if value is None or value == "":
+        return None
+    return str(value)[:10]
+
+
+def daily_send_limit_reached(row: dict, now_utc: datetime) -> bool:
+    """
+    True when the user already got MAX_SEND_TIMES successful emails today
+    (local calendar day). Blocks abuse via editing preferred times after each send.
+    """
+    today = user_local_calendar_day(row, now_utc)
+    if daily_send_on_value(row) != today:
+        return False
+    try:
+        count = int(row.get("daily_send_count") or 0)
+    except (TypeError, ValueError):
+        count = 0
+    return count >= MAX_SEND_TIMES
+
+
 def load_enabled_users() -> list[dict]:
     client = get_supabase()
     result = client.table("users").select("*").eq("enabled", True).execute()
@@ -413,11 +444,22 @@ def dispatch_user(
             if preferred_local is not None
             else sent_at
         )
+        local_day = user_local_calendar_day(row, sent_at)
         try:
-            mark_user_sent(user_id, stamp)
+            prev_count = int(row.get("daily_send_count") or 0)
+        except (TypeError, ValueError):
+            prev_count = 0
+        try:
+            record_successful_send(
+                user_id,
+                local_day=local_day,
+                previous_day=daily_send_on_value(row),
+                previous_count=prev_count,
+                slot_stamp=stamp,
+            )
         except Exception:
             logger.exception(
-                "Email sent to %s but failed to persist last_sent_at id=%s",
+                "Email sent to %s but failed to persist send record id=%s",
                 email,
                 user_id,
             )
@@ -486,6 +528,7 @@ def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
     users = load_enabled_users()
     matched: list[tuple[dict, datetime]] = []
     skipped_dedupe = 0
+    skipped_daily_cap = 0
     not_due = 0
     invalid_tz = 0
     empty_watchlist = 0
@@ -498,6 +541,16 @@ def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
         preferred = matching_due_slot(schedule, now)
         if preferred is None:
             not_due += 1
+            continue
+        if daily_send_limit_reached(row, now):
+            skipped_daily_cap += 1
+            logger.info(
+                "Skip daily cap email=%s day=%s count=%s/%s",
+                row.get("email"),
+                user_local_calendar_day(row, now),
+                row.get("daily_send_count"),
+                MAX_SEND_TIMES,
+            )
             continue
         if already_sent_for_slot(row, preferred):
             skipped_dedupe += 1
@@ -521,10 +574,11 @@ def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
     if not matched:
         logger.info(
             "No users due for delivery (enabled=%d not_due=%d dedupe=%d "
-            "invalid_tz=%d empty_watchlist=%d) — idle exit.",
+            "daily_cap=%d invalid_tz=%d empty_watchlist=%d) — idle exit.",
             len(users),
             not_due,
             skipped_dedupe,
+            skipped_daily_cap,
             invalid_tz,
             empty_watchlist,
         )
@@ -534,6 +588,7 @@ def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
             "sent_ok": 0,
             "failures": 0,
             "dedupe_skips": skipped_dedupe,
+            "daily_cap_skips": skipped_daily_cap,
             "idle": True,
             "enabled_users": len(users),
             "not_due": not_due,
@@ -544,9 +599,10 @@ def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
     matched_rows = [row for row, _ in matched]
     unique_tickers = collect_unique_tickers(matched_rows)
     logger.info(
-        "Matched %d user(s) for delivery (dedupe_skips=%d, unique_tickers=%d)",
+        "Matched %d user(s) for delivery (dedupe_skips=%d daily_cap_skips=%d, unique_tickers=%d)",
         len(matched),
         skipped_dedupe,
+        skipped_daily_cap,
         len(unique_tickers),
     )
 
@@ -560,5 +616,6 @@ def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
         "sent_ok": sent_ok,
         "failures": failures,
         "dedupe_skips": skipped_dedupe,
+        "daily_cap_skips": skipped_daily_cap,
         "idle": False,
     }

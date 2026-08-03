@@ -64,7 +64,7 @@ API docs: http://127.0.0.1:8000/docs
 
 Apply schema once in the Supabase SQL Editor using `backend/database_schema.sql`, then enable RLS and lock grants for `anon` / `authenticated` (service role only for the API).
 
-Existing databases: also run migrations `001`–`004` under `backend/migrations/` (`last_sent_at`, `unsubscribe_token`, legacy `manage_token` columns unused by the app, `delivery_logs`).
+Existing databases: also run migrations `001`–`006` under `backend/migrations/` (`last_sent_at`, `unsubscribe_token`, legacy `manage_token` columns unused by the app, `delivery_logs`, daily send cap).
 
 ### 2. Chrome extension
 

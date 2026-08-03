@@ -53,6 +53,55 @@ def mark_user_sent(user_id: str, sent_at: datetime | None = None) -> None:
     logger.info("Marked last_sent_at id=%s at=%s", user_id, iso)
 
 
+def record_successful_send(
+    user_id: str,
+    *,
+    local_day: str,
+    previous_day: str | None,
+    previous_count: int,
+    slot_stamp: datetime | None = None,
+) -> None:
+    """
+    Stamp last_sent_at and bump daily_send_count for the user's local calendar day.
+    Caps abuse where someone edits send times after each delivery.
+    """
+    if not user_id:
+        raise ValueError("user_id is required")
+    stamp = slot_stamp or datetime.now(timezone.utc)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    iso = stamp.astimezone(timezone.utc).isoformat()
+
+    if previous_day == local_day:
+        new_count = max(0, int(previous_count)) + 1
+    else:
+        new_count = 1
+
+    client = get_supabase()
+    payload = {
+        "last_sent_at": iso,
+        "daily_send_count": new_count,
+        "daily_send_on": local_day,
+    }
+    try:
+        client.table("users").update(payload).eq("id", user_id).execute()
+    except Exception:
+        logger.exception(
+            "Failed to record successful send id=%s day=%s count=%s",
+            user_id,
+            local_day,
+            new_count,
+        )
+        raise
+    logger.info(
+        "Recorded send id=%s last_sent_at=%s daily_send_on=%s daily_send_count=%s",
+        user_id,
+        iso,
+        local_day,
+        new_count,
+    )
+
+
 def ensure_unsubscribe_token(row: dict[str, Any]) -> str:
     """
     Return a stable unsubscribe token for this user, creating one if missing

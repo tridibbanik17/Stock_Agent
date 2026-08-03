@@ -41,6 +41,10 @@ create table if not exists public.users (
   -- Cron send dedupe: set after a successful email for a preferred-hour slot
   last_sent_at timestamptz,
 
+  -- Daily delivery cap (local calendar day in user timezone; blocks schedule-edit abuse)
+  daily_send_count integer not null default 0,
+  daily_send_on date,
+
   -- Optional: prefer digests when grades flip (still sends a short no-change note)
   email_on_grade_change_only boolean not null default false,
 
@@ -96,6 +100,12 @@ comment on column public.users.preferred_hours is
 
 comment on column public.users.last_sent_at is
   'UTC timestamp of last successful cron email; used to skip duplicate sends in the same preferred-hour window.';
+
+comment on column public.users.daily_send_count is
+  'Successful report emails sent on daily_send_on (user local calendar day); max 2.';
+
+comment on column public.users.daily_send_on is
+  'Local calendar date that daily_send_count applies to.';
 
 comment on column public.users.unsubscribe_token is
   'Opaque token for one-click email unsubscribe (GET/POST/DELETE /api/unsubscribe).';
