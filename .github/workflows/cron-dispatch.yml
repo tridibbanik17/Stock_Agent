@@ -54,6 +54,7 @@ jobs:
           REPORT_FROM_EMAIL: ${{ secrets.REPORT_FROM_EMAIL }}
           PUBLIC_API_BASE_URL: ${{ secrets.PUBLIC_API_BASE_URL }}
           CRON_DISPATCH_WORKERS: "8"
+          # Yahoo RSS news is CI-safe; set STOCK_AGENT_SKIP_NEWS=true to disable.
           LOG_LEVEL: INFO
           GITHUB_ACTIONS: "true"
         run: python backend/worker/cron_dispatch.py

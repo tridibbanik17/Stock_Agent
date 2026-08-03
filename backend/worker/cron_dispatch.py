@@ -180,9 +180,8 @@ def collect_unique_tickers(rows: list[dict]) -> list[str]:
 
 
 def _should_skip_news() -> bool:
-    return bool(os.getenv("GITHUB_ACTIONS")) or os.getenv(
-        "STOCK_AGENT_SKIP_NEWS", ""
-    ).lower() in {"1", "true", "yes"}
+    """News runs in CI via Yahoo RSS; only skip when explicitly requested."""
+    return os.getenv("STOCK_AGENT_SKIP_NEWS", "").lower() in {"1", "true", "yes"}
 
 
 def build_shared_quote_cache(tickers: list[str]) -> dict[str, dict[str, Any]]:

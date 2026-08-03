@@ -10,7 +10,7 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 - **Subscription ownership:** updates to an existing email require `manageToken` (stored in the extension). Lost token → `POST /api/subscribe/recover` emails a one-time reclaim link.
 - **Cron dedupe:** after a successful send, `last_sent_at` is stamped so overlapping/retry ticks skip that preferred-hour slot. A later slot the same day still sends.
 - **Cron shared quote cache:** each tick unions matched users’ tickers, fetches/grades each symbol once, then reuses those quotes for every email (avoids N× yfinance hits when watchlists overlap).
-- **Cron fan-out:** matched users are emailed in parallel (`CRON_DISPATCH_WORKERS`, default 8) so one slow Resend call does not block the rest of the tick. News fetches are also parallelized when enabled.
+- **Cron fan-out:** matched users are emailed in parallel (`CRON_DISPATCH_WORKERS`, default 8) so one slow Resend call does not block the rest of the tick. News uses Yahoo RSS (CI-safe) with a short disk cache; set `STOCK_AGENT_SKIP_NEWS=1` to disable.
 - **Unsubscribe:** report emails include `GET /api/unsubscribe?token=…` (also `POST` / `DELETE`). That flips `enabled=false` without the extension.
 - **Gemini** is optional BYOK in the extension; it is **not** used for grades or email today.
 
@@ -31,7 +31,7 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 | Asset class | `growth_tech` / `crypto_proxy` / `capital_intensive` / `standard` | Derived from yfinance sector / industry / quoteType (+ crypto keywords) |
 | Grade / verdict | STRONG BUY / HOLD / AVOID (n/5) | Our grader (rules, not AI) |
 | Notes | Short why text | Our grader |
-| News risk (optional) | Headline risk line | GoogleNews (cron; often skipped on GitHub Actions) |
+| News risk (optional) | Headline risk line | Yahoo Finance RSS (primary, CI-safe) → yfinance news → optional GoogleNews; disk TTL cache |
 
 ## FastAPI
 
