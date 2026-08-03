@@ -62,6 +62,8 @@ API docs: http://127.0.0.1:8000/docs
 
 Apply schema once in the Supabase SQL Editor using `backend/database_schema.sql`, then enable RLS and lock grants for `anon` / `authenticated` (service role only for the API).
 
+Existing databases: also run `backend/migrations/001_add_last_sent_at.sql` so cron can dedupe overlapping sends.
+
 ### 2. Chrome extension
 
 1. Open `chrome://extensions`

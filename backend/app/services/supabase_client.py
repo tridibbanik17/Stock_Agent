@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from supabase import Client, create_client
@@ -22,6 +23,23 @@ def get_supabase() -> Client:
         _client = create_client(url, key)
         logger.info("Supabase client initialized for %s", url)
     return _client
+
+
+def mark_user_sent(user_id: str, sent_at: datetime | None = None) -> None:
+    """Record a successful cron email so overlapping ticks do not double-send."""
+    if not user_id:
+        raise ValueError("user_id is required to mark last_sent_at")
+    sent_at = sent_at or datetime.now(timezone.utc)
+    if sent_at.tzinfo is None:
+        sent_at = sent_at.replace(tzinfo=timezone.utc)
+    iso = sent_at.astimezone(timezone.utc).isoformat()
+    client = get_supabase()
+    try:
+        client.table("users").update({"last_sent_at": iso}).eq("id", user_id).execute()
+    except Exception:
+        logger.exception("Failed to update last_sent_at for id=%s", user_id)
+        raise
+    logger.info("Marked last_sent_at id=%s at=%s", user_id, iso)
 
 
 def upsert_user_subscription(payload: SubscribeRequest) -> dict[str, Any]:

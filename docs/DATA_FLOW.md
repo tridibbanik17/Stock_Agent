@@ -6,7 +6,8 @@
 Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 ```
 
-- **Supabase** stores only email, tickers, and schedule (not holdings, not grades).
+- **Supabase** stores only email, tickers, schedule, and `last_sent_at` (not holdings, not grades).
+- **Cron dedupe:** after a successful send, `last_sent_at` is stamped so overlapping/retry ticks skip that preferred-hour slot. A later slot the same day still sends.
 - **Gemini** is optional BYOK in the extension; it is **not** used for grades or email today.
 
 ## Tags / fields and where they come from

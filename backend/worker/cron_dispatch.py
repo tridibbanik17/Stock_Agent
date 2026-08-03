@@ -4,8 +4,9 @@ GitHub Actions / local cron entrypoint.
 Every ~15 minutes (offset :04/:19/:34/:49):
   1. Load enabled users from Supabase
   2. Match timezone + days + preferred_hours window
-  3. Grade watchlist (yfinance + trusted news flags)
-  4. Email report via Resend (or dry-run log)
+  3. Skip if last_sent_at already covers that preferred-hour slot
+  4. Grade watchlist (yfinance + trusted news flags)
+  5. Email report via Resend (or dry-run log), then stamp last_sent_at
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -30,7 +31,7 @@ from app.services.email_report import format_report_text, send_report_email
 from app.services.grading import attach_grades
 from app.services.market_data import analyze_watchlist
 from app.services.news import fetch_news_for_watchlist
-from app.services.supabase_client import get_supabase
+from app.services.supabase_client import get_supabase, mark_user_sent
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -48,14 +49,16 @@ def user_to_schedule(row: dict) -> dict:
     }
 
 
-def schedule_matches(schedule: dict, now_utc: datetime | None = None) -> bool:
+def matching_preferred_slot(
+    schedule: dict, now_utc: datetime | None = None
+) -> datetime | None:
     """
-    True when local time is within 15 minutes after a preferred send time.
-    Cron ticks every ~15 minutes (UTC :04/:19/:34/:49), so we must allow
-    the window to cross the hour boundary (e.g. 10:52 → still match at 11:04).
-    """
-    from datetime import timedelta
+    Return the preferred local send datetime (tz-aware) if `now` falls in its
+    15-minute delivery window; otherwise None.
 
+    Cron ticks every ~15 minutes (UTC :04/:19/:34/:49), so the window may cross
+    the hour boundary (e.g. 10:52 preferred still matches at 11:04).
+    """
     now_utc = now_utc or datetime.now(timezone.utc)
     tz_name = schedule.get("timezone") or "UTC"
     try:
@@ -75,7 +78,7 @@ def schedule_matches(schedule: dict, now_utc: datetime | None = None) -> bool:
         day_ok = js_weekday in set(days)
 
     if not day_ok:
-        return False
+        return None
 
     times = schedule.get("times") or ["09:00"]
     for time_str in times:
@@ -92,8 +95,48 @@ def schedule_matches(schedule: dict, now_utc: datetime | None = None) -> bool:
         )
         delta = local_now - preferred
         if timedelta(0) <= delta < timedelta(minutes=15):
-            return True
-    return False
+            return preferred
+    return None
+
+
+def schedule_matches(schedule: dict, now_utc: datetime | None = None) -> bool:
+    """True when local time is within 15 minutes after a preferred send time."""
+    return matching_preferred_slot(schedule, now_utc) is not None
+
+
+def parse_timestamptz(value: object) -> datetime | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    text = str(value).strip()
+    if not text:
+        return None
+    # Supabase may return "...+00:00" or "...Z"
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        logger.warning("Could not parse last_sent_at=%r", value)
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def already_sent_for_slot(row: dict, preferred_local: datetime) -> bool:
+    """
+    Skip if we already successfully emailed for this preferred-hour slot.
+
+    Multi-send same day still works: a 09:00 send does not block a 15:00 slot
+    because last_sent_at (≈09:04) is before the 15:00 preferred instant.
+    """
+    last = parse_timestamptz(row.get("last_sent_at"))
+    if last is None:
+        return False
+    preferred_utc = preferred_local.astimezone(timezone.utc)
+    return last >= preferred_utc
 
 
 def load_enabled_users() -> list[dict]:
@@ -107,6 +150,7 @@ def load_enabled_users() -> list[dict]:
 def dispatch_user(row: dict) -> bool:
     email = row.get("email")
     watchlist = list(row.get("watchlist") or [])
+    user_id = str(row.get("id") or "")
     if not email or not watchlist:
         logger.warning("Skipping user id=%s - missing email or watchlist", row.get("id"))
         return False
@@ -127,13 +171,25 @@ def dispatch_user(row: dict) -> bool:
             logger.exception("News fetch failed; continuing without news flags")
     quotes = attach_grades(metrics, news_flags)
     body = format_report_text(email, quotes)
-    subject = f"Stock Agent Report - {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
+    sent_at = datetime.now(timezone.utc)
+    subject = f"Stock Agent Report - {sent_at.strftime('%Y-%m-%d')}"
     ok = send_report_email(email, subject, body)
     if not ok and os.getenv("GITHUB_ACTIONS"):
         print(
             f"::error::Email send failed for {email}. Check RESEND_API_KEY and REPORT_FROM_EMAIL secrets.",
             flush=True,
         )
+    if ok and user_id:
+        try:
+            mark_user_sent(user_id, sent_at)
+        except Exception:
+            # Email already went out; log but do not fail the whole cron tick.
+            # Next overlapping tick may retry until last_sent_at sticks.
+            logger.exception(
+                "Email sent to %s but failed to persist last_sent_at id=%s",
+                email,
+                user_id,
+            )
     return ok
 
 
@@ -154,19 +210,38 @@ def main() -> int:
         logger.exception("Failed to load users from Supabase")
         return 1
 
-    matched = []
+    matched: list[tuple[dict, datetime]] = []
+    skipped_dedupe = 0
     for row in users:
         schedule = user_to_schedule(row)
-        if schedule_matches(schedule, now):
-            matched.append(row)
+        preferred = matching_preferred_slot(schedule, now)
+        if preferred is None:
+            continue
+        if already_sent_for_slot(row, preferred):
+            skipped_dedupe += 1
+            logger.info(
+                "Skip dedupe email=%s slot=%s last_sent_at=%s",
+                row.get("email"),
+                preferred.isoformat(),
+                row.get("last_sent_at"),
+            )
+            continue
+        matched.append((row, preferred))
 
     if not matched:
-        logger.info("No users in the current schedule window — idle exit.")
+        logger.info(
+            "No users due for delivery (dedupe_skips=%d) — idle exit.",
+            skipped_dedupe,
+        )
         return 0
 
-    logger.info("Matched %d user(s) for delivery", len(matched))
+    logger.info(
+        "Matched %d user(s) for delivery (dedupe_skips=%d)",
+        len(matched),
+        skipped_dedupe,
+    )
     failures = 0
-    for row in matched:
+    for row, preferred in matched:
         try:
             ok = dispatch_user(row)
             if not ok:

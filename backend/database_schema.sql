@@ -28,6 +28,9 @@ create table if not exists public.users (
   -- Soft disable without deleting the row
   enabled boolean not null default true,
 
+  -- Cron send dedupe: set after a successful email for a preferred-hour slot
+  last_sent_at timestamptz,
+
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
@@ -72,3 +75,6 @@ comment on column public.users.watchlist is
 
 comment on column public.users.preferred_hours is
   'Local send times HH:MM; multiple values = multi-send per day.';
+
+comment on column public.users.last_sent_at is
+  'UTC timestamp of last successful cron email; used to skip duplicate sends in the same preferred-hour window.';
