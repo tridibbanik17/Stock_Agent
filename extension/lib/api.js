@@ -88,6 +88,7 @@ export async function subscribeDelivery(localState) {
     watchlist: payload.watchlist,
     schedule: payload.schedule,
     enabled: payload.enabled,
+    emailOnGradeChangeOnly: Boolean(payload.emailOnGradeChangeOnly),
   };
   if (payload.manageToken) {
     body.manageToken = payload.manageToken;

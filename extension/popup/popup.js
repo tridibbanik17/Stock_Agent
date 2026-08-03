@@ -58,6 +58,7 @@ const els = {
   times: /** @type {HTMLElement} */ ($("schedule-times")),
   addTime: /** @type {HTMLButtonElement} */ ($("add-time")),
   scheduleSummary: /** @type {HTMLElement} */ ($("schedule-summary")),
+  gradeChangeOnly: /** @type {HTMLInputElement} */ ($("grade-change-only")),
   subscribe: /** @type {HTMLButtonElement} */ ($("subscribe-btn")),
   manageToken: /** @type {HTMLInputElement} */ ($("manage-token-input")),
   recover: /** @type {HTMLButtonElement} */ ($("recover-btn")),
@@ -226,6 +227,7 @@ function bindEvents() {
 
   els.email.addEventListener("input", () => clearStatus("subscribe"));
   els.manageToken.addEventListener("input", () => clearStatus("subscribe"));
+  els.gradeChangeOnly.addEventListener("change", () => clearStatus("subscribe"));
 
   els.subscribe.addEventListener("click", () => {
     void onSaveAndSubscribe();
@@ -418,6 +420,7 @@ async function hydrateFromStorage() {
 
   els.email.value = state.delivery.email || "";
   els.manageToken.value = state.manageToken || "";
+  els.gradeChangeOnly.checked = Boolean(state.delivery.emailOnGradeChangeOnly);
   applyScheduleToDom(normalizeSchedule(state.delivery.schedule));
   els.geminiKey.value = state.geminiApiKey || (await getGeminiKey());
   els.autoAnalyze.checked = state.autoAnalyze !== false;
@@ -1193,6 +1196,7 @@ async function onClearAllSettings() {
   await clearAllLocalSettings();
   els.email.value = "";
   els.manageToken.value = "";
+  els.gradeChangeOnly.checked = false;
   applyScheduleToDom(defaultSchedule());
   els.geminiKey.value = "";
   els.geminiKey.type = "password";
@@ -1251,6 +1255,7 @@ async function onSaveAndSubscribe() {
       email,
       schedule,
       enabled: true,
+      emailOnGradeChangeOnly: els.gradeChangeOnly.checked,
     });
 
     const pastedToken = els.manageToken.value.trim();
@@ -1281,6 +1286,7 @@ async function onSaveAndSubscribe() {
         email: outbound.email,
         schedule: outbound.schedule,
         enabled: outbound.enabled,
+        emailOnGradeChangeOnly: Boolean(outbound.emailOnGradeChangeOnly),
       },
       userId: response?.id || response?.userId || state.userId,
       manageToken: nextToken,

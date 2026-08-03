@@ -317,6 +317,29 @@ button.add-time-btn {
   line-height: 1.35;
 }
 
+.digest-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  margin-top: 12px;
+  font-size: 0.74rem;
+  color: var(--text);
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.digest-option input {
+  margin-top: 2px;
+}
+
+.digest-option .muted-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
 .ownership-row {
   display: grid;
   gap: 6px;

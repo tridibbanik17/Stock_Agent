@@ -53,6 +53,7 @@ def _to_subscribe_response(record: dict[str, Any]) -> SubscribeResponse:
         timezone=str(record.get("timezone") or "UTC"),
         enabled=bool(record.get("enabled", True)),
         manageToken=str(record["manage_token"]) if record.get("manage_token") else None,
+        emailOnGradeChangeOnly=bool(record.get("email_on_grade_change_only", False)),
         created_at=str(record["created_at"]) if record.get("created_at") else None,
         updated_at=str(record["updated_at"]) if record.get("updated_at") else None,
     )

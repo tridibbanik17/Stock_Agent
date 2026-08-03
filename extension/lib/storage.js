@@ -27,7 +27,7 @@
 
 /** Soft cap so a single user cannot enqueue an unbounded fan-out. */
 export const MAX_SEND_TIMES = 8;
-/** @typedef {{ email: string, schedule: ScheduleConfig, enabled: boolean }} DeliveryPrefs */
+/** @typedef {{ email: string, schedule: ScheduleConfig, enabled: boolean, emailOnGradeChangeOnly?: boolean }} DeliveryPrefs */
 /** @typedef {{
  *   holdings: HoldingsMap,
  *   geminiApiKey: string,
@@ -42,6 +42,7 @@ export const MAX_SEND_TIMES = 8;
  *   watchlist: string[],
  *   schedule: ScheduleConfig,
  *   enabled: boolean,
+ *   emailOnGradeChangeOnly?: boolean,
  *   userId: string|null,
  *   manageToken: string|null
  * }} CloudPayload */
@@ -278,6 +279,7 @@ const DEFAULTS = Object.freeze({
       timezone: "UTC",
     }),
     enabled: false,
+    emailOnGradeChangeOnly: false,
   }),
   userId: null,
   manageToken: null,
@@ -446,12 +448,14 @@ export async function getDelivery() {
       email: "",
       schedule: defaultSchedule(),
       enabled: false,
+      emailOnGradeChangeOnly: false,
     };
   }
   return {
     email: typeof delivery.email === "string" ? delivery.email : "",
     schedule: normalizeSchedule(delivery.schedule),
     enabled: Boolean(delivery.enabled),
+    emailOnGradeChangeOnly: Boolean(delivery.emailOnGradeChangeOnly),
   };
 }
 
@@ -469,6 +473,10 @@ export async function setDelivery(patch) {
     ),
     enabled:
       typeof patch.enabled === "boolean" ? patch.enabled : current.enabled,
+    emailOnGradeChangeOnly:
+      typeof patch.emailOnGradeChangeOnly === "boolean"
+        ? patch.emailOnGradeChangeOnly
+        : Boolean(current.emailOnGradeChangeOnly),
   };
   await chrome.storage.local.set({ [STORAGE_KEYS.delivery]: next });
   return next;
@@ -502,11 +510,13 @@ export async function getLocalState(keys = null) {
           email: String(stored.delivery.email || ""),
           schedule: normalizeSchedule(stored.delivery.schedule),
           enabled: Boolean(stored.delivery.enabled),
+          emailOnGradeChangeOnly: Boolean(stored.delivery.emailOnGradeChangeOnly),
         }
       : {
           email: "",
           schedule: defaultSchedule(),
           enabled: false,
+          emailOnGradeChangeOnly: false,
         },
     userId: typeof stored.userId === "string" ? stored.userId : null,
     manageToken: typeof stored.manageToken === "string" ? stored.manageToken : null,
@@ -531,6 +541,7 @@ export async function cacheCloudProfile(patch) {
       email: String(patch.delivery.email || "").trim().toLowerCase(),
       schedule: normalizeSchedule(patch.delivery.schedule),
       enabled: Boolean(patch.delivery.enabled),
+      emailOnGradeChangeOnly: Boolean(patch.delivery.emailOnGradeChangeOnly),
     };
   }
   if ("userId" in patch) write.userId = patch.userId ?? null;
@@ -571,6 +582,7 @@ export function buildCloudPayload(state) {
     watchlist,
     schedule,
     enabled: Boolean(state?.delivery?.enabled),
+    emailOnGradeChangeOnly: Boolean(state?.delivery?.emailOnGradeChangeOnly),
     userId: typeof state?.userId === "string" ? state.userId : null,
     manageToken: typeof state?.manageToken === "string" ? state.manageToken : null,
   };
@@ -608,6 +620,7 @@ export function assertNoPrivateLeak(payload) {
     "watchlist",
     "schedule",
     "enabled",
+    "emailOnGradeChangeOnly",
     "userId",
     "manageToken",
   ]);

@@ -189,6 +189,7 @@ def upsert_user_subscription(payload: SubscribeRequest) -> dict[str, Any]:
         "preferred_days": payload.schedule.days,
         "timezone": payload.schedule.timezone,
         "enabled": payload.enabled,
+        "email_on_grade_change_only": bool(payload.emailOnGradeChangeOnly),
     }
 
     forbidden = {
@@ -426,3 +427,17 @@ def insert_delivery_log(
         row.get("resend_id"),
     )
     return record
+
+
+def update_user_last_grades(user_id: str, grades: dict[str, str]) -> None:
+    """Persist the grades snapshot that was just emailed (for flip detection)."""
+    if not user_id:
+        raise ValueError("user_id is required to update last_grades")
+    cleaned = {
+        str(k).strip().upper(): str(v).strip().upper()
+        for k, v in (grades or {}).items()
+        if str(k).strip()
+    }
+    client = get_supabase()
+    client.table("users").update({"last_grades": cleaned}).eq("id", user_id).execute()
+    logger.info("Updated last_grades id=%s tickers=%d", user_id, len(cleaned))

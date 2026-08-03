@@ -111,6 +111,8 @@ class SubscribeRequest(BaseModel):
     )
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     enabled: bool = True
+    # When true: full report on grade flips, else a short no-change digest (still emails).
+    emailOnGradeChangeOnly: bool = False
     # Ownership proof for updates (omit on first create for a new email).
     manageToken: str | None = Field(
         default=None,
@@ -163,6 +165,7 @@ class SubscribeResponse(BaseModel):
     timezone: str
     enabled: bool
     manageToken: str | None = None
+    emailOnGradeChangeOnly: bool = False
     created_at: str | None = None
     updated_at: str | None = None
 

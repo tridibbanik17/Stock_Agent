@@ -41,6 +41,12 @@ create table if not exists public.users (
   -- Cron send dedupe: set after a successful email for a preferred-hour slot
   last_sent_at timestamptz,
 
+  -- Optional: prefer digests when grades flip (still sends a short no-change note)
+  email_on_grade_change_only boolean not null default false,
+
+  -- Last emailed grade per ticker {"NVDA":"STRONG_BUY", ...}
+  last_grades jsonb not null default '{}'::jsonb,
+
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
@@ -99,6 +105,12 @@ comment on column public.users.manage_token is
 
 comment on column public.users.recover_token is
   'One-time email recovery token to rotate manage_token if the extension lost it.';
+
+comment on column public.users.email_on_grade_change_only is
+  'When true, cron emails a full report on grade flips, otherwise a short no-change digest.';
+
+comment on column public.users.last_grades is
+  'Last emailed grade per ticker, e.g. {"NVDA":"STRONG_BUY"}. Used for grade-change digests.';
 
 -- Cron / Resend delivery audit (no holdings, no email body)
 create table if not exists public.delivery_logs (
