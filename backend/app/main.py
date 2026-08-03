@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.abuse import rate_limit_headers
 from app.api.routes import router
 from app.config import configure_logging, get_settings
 
@@ -25,7 +26,8 @@ app = FastAPI(
     version="0.2.0",
     description=(
         "Multi-tenant delivery preferences API. "
-        "Privacy-first: no holdings, buy prices, or Gemini keys."
+        "Privacy-first: no holdings, buy prices, or Gemini keys. "
+        "Public routes are rate-limited per client IP."
     ),
 )
 
@@ -37,7 +39,22 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Accept"],
+    expose_headers=[
+        "Retry-After",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Bucket",
+    ],
 )
+
+
+@app.middleware("http")
+async def attach_rate_limit_headers(request: Request, call_next):
+    response = await call_next(request)
+    for key, value in rate_limit_headers(request).items():
+        response.headers[key] = value
+    return response
+
 
 app.include_router(router, prefix="/api")
 

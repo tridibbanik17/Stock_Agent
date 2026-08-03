@@ -39,6 +39,23 @@ def get_settings() -> dict:
         "log_level": os.getenv("LOG_LEVEL", "INFO").upper(),
         "host": os.getenv("HOST", "0.0.0.0"),
         "port": int(os.getenv("PORT", "8000")),
+        # Abuse protection (in-process; per API instance)
+        "rate_limit_subscribe_per_min": int(
+            os.getenv("RATE_LIMIT_SUBSCRIBE_PER_MIN", "10")
+        ),
+        "rate_limit_snapshot_per_min": int(
+            os.getenv("RATE_LIMIT_SNAPSHOT_PER_MIN", "30")
+        ),
+        "rate_limit_unsubscribe_per_min": int(
+            os.getenv("RATE_LIMIT_UNSUBSCRIBE_PER_MIN", "30")
+        ),
+        "rate_limit_window_seconds": float(
+            os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")
+        ),
+        "max_request_body_bytes": int(
+            os.getenv("MAX_REQUEST_BODY_BYTES", "65536")
+        ),
+        "trust_proxy": os.getenv("TRUST_PROXY", "").lower() in {"1", "true", "yes"},
     }
     return settings
 

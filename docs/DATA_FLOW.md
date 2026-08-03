@@ -40,6 +40,8 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 | `POST /api/subscribe` | Save email / tickers / schedule to Supabase (no market data) |
 | `GET` / `POST` / `DELETE /api/unsubscribe` | Soft-disable emails via opaque `unsubscribe_token` |
 
+Rate limits (per IP, in-process): subscribe ~10/min, snapshot ~30/min, unsubscribe ~30/min. Also rejects non-JSON POST bodies and payloads over `MAX_REQUEST_BODY_BYTES`.
+
 ## Grade bands (our rules)
 
 | Score | Tag |

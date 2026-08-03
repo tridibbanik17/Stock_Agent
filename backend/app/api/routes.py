@@ -9,6 +9,11 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 
+from app.api.abuse import (
+    ProtectSnapshot,
+    ProtectSubscribe,
+    ProtectUnsubscribe,
+)
 from app.models.schemas import (
     SnapshotRequest,
     SubscribeRequest,
@@ -136,7 +141,10 @@ def _run_unsubscribe(token: str) -> dict[str, Any]:
     status_code=status.HTTP_200_OK,
     summary="Upsert email delivery preferences",
 )
-async def subscribe(body: SubscribeRequest) -> SubscribeResponse:
+async def subscribe(
+    body: SubscribeRequest,
+    _: ProtectSubscribe,
+) -> SubscribeResponse:
     logger.info(
         "POST /api/subscribe email=%s watchlist=%s frequency=%s",
         body.email,
@@ -173,6 +181,7 @@ async def subscribe(body: SubscribeRequest) -> SubscribeResponse:
     response_class=HTMLResponse,
 )
 async def unsubscribe_get(
+    _: ProtectUnsubscribe,
     token: str = Query(..., min_length=8, max_length=64),
 ) -> HTMLResponse:
     """Browser-friendly one-click link from the report email footer."""
@@ -194,6 +203,7 @@ async def unsubscribe_get(
     summary="Disable scheduled emails by token",
 )
 async def unsubscribe_post(
+    _: ProtectUnsubscribe,
     token: str | None = Query(default=None, min_length=8, max_length=64),
     body: UnsubscribeRequest | None = Body(default=None),
 ) -> UnsubscribeResponse:
@@ -217,14 +227,20 @@ async def unsubscribe_post(
     response_model=UnsubscribeResponse,
     summary="Disable scheduled emails by token (DELETE)",
 )
-async def unsubscribe_delete(token: str) -> UnsubscribeResponse:
+async def unsubscribe_delete(
+    token: str,
+    _: ProtectUnsubscribe,
+) -> UnsubscribeResponse:
     logger.info("DELETE /api/unsubscribe token_prefix=%s", token[:8])
     record = _run_unsubscribe(token)
     return _unsubscribe_response(record)
 
 
 @router.post("/quotes/snapshot", summary="Live yfinance snapshot + grades")
-async def quotes_snapshot(body: SnapshotRequest) -> dict[str, Any]:
+async def quotes_snapshot(
+    body: SnapshotRequest,
+    _: ProtectSnapshot,
+) -> dict[str, Any]:
     """
     Fetch live prices/metrics for watchlist tickers and attach grades.
     Tickers only — never accepts holdings or API keys.

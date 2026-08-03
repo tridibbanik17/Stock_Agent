@@ -116,6 +116,8 @@ Always `git pull` before new work so you pick up the bot bump commit.
 
 Both subscribe and snapshot accept tickers only. No holdings. No Gemini keys.
 
+Public routes are rate-limited per client IP (defaults: subscribe 10/min, snapshot 30/min, unsubscribe 30/min). Oversized bodies and non-JSON POST bodies are rejected. Tunables: `RATE_LIMIT_*`, `MAX_REQUEST_BODY_BYTES`, `TRUST_PROXY` in `backend/.env`.
+
 Set `PUBLIC_API_BASE_URL` in `backend/.env` (and GitHub Actions if needed) so report emails include a working unsubscribe link.
 
 ## Collaborators
