@@ -33,10 +33,25 @@ jobs:
             exit 1
           fi
           BASE="${PUBLIC_API_BASE_URL%/}"
-          echo "POST ${BASE}/api/internal/dispatch-due"
-          # -f fails on HTTP 4xx/5xx; --retry helps free-tier cold starts
-          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors \
-            -X POST "${BASE}/api/internal/dispatch-due" \
+          URL="${BASE}/api/internal/dispatch-due"
+          echo "POST ${URL}"
+          # Show body on failure (curl -f → exit 22 hides the JSON otherwise)
+          set +e
+          HTTP_CODE=$(curl -sS --retry 3 --retry-delay 5 --retry-all-errors \
+            -o /tmp/dispatch-due.json -w "%{http_code}" \
+            -X POST "${URL}" \
             -H "X-Dispatch-Secret: ${DISPATCH_SECRET}" \
-            -H "Accept: application/json" \
-            -w "\nHTTP %{http_code}\n"
+            -H "Accept: application/json")
+          CURL_EXIT=$?
+          set -e
+          echo "HTTP ${HTTP_CODE} (curl_exit=${CURL_EXIT})"
+          if [ -f /tmp/dispatch-due.json ]; then
+            echo "Response body:"
+            cat /tmp/dispatch-due.json
+            echo
+          fi
+          if [ "$CURL_EXIT" -ne 0 ] || [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::dispatch-due failed. If HTTP 503 mentions DISPATCH_SECRET, set it on Render Environment (same value as this Actions secret) and redeploy."
+            exit 1
+          fi
+          echo "dispatch-due OK"
