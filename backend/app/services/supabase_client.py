@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -25,6 +26,16 @@ def get_supabase() -> Client:
     return _client
 
 
+def _normalize_token(token: str) -> str:
+    text = (token or "").strip()
+    if not text:
+        raise ValueError("unsubscribe token is required")
+    try:
+        return str(uuid.UUID(text))
+    except ValueError as exc:
+        raise ValueError("unsubscribe token must be a valid UUID") from exc
+
+
 def mark_user_sent(user_id: str, sent_at: datetime | None = None) -> None:
     """Record a successful cron email so overlapping ticks do not double-send."""
     if not user_id:
@@ -42,10 +53,78 @@ def mark_user_sent(user_id: str, sent_at: datetime | None = None) -> None:
     logger.info("Marked last_sent_at id=%s at=%s", user_id, iso)
 
 
+def ensure_unsubscribe_token(row: dict[str, Any]) -> str:
+    """
+    Return a stable unsubscribe token for this user, creating one if missing
+    (legacy rows before migration / default).
+    """
+    existing = row.get("unsubscribe_token")
+    if existing:
+        return str(existing)
+
+    user_id = str(row.get("id") or "")
+    if not user_id:
+        raise ValueError("user id is required to create unsubscribe_token")
+
+    token = str(uuid.uuid4())
+    client = get_supabase()
+    try:
+        result = (
+            client.table("users")
+            .update({"unsubscribe_token": token})
+            .eq("id", user_id)
+            .execute()
+        )
+    except Exception:
+        logger.exception("Failed to set unsubscribe_token for id=%s", user_id)
+        raise
+
+    data = result.data or []
+    if data:
+        row["unsubscribe_token"] = data[0].get("unsubscribe_token") or token
+    else:
+        row["unsubscribe_token"] = token
+    logger.info("Created unsubscribe_token for id=%s", user_id)
+    return str(row["unsubscribe_token"])
+
+
+def disable_subscription_by_token(token: str) -> dict[str, Any]:
+    """
+    Soft-disable delivery (enabled=false) for the matching unsubscribe token.
+    Idempotent when already disabled.
+    """
+    normalized = _normalize_token(token)
+    client = get_supabase()
+    try:
+        result = (
+            client.table("users")
+            .update({"enabled": False})
+            .eq("unsubscribe_token", normalized)
+            .execute()
+        )
+    except Exception:
+        logger.exception("Unsubscribe update failed for token prefix=%s", normalized[:8])
+        raise
+
+    data = result.data or []
+    if not data:
+        raise LookupError("No subscription found for that unsubscribe token")
+
+    record = data[0] if isinstance(data, list) else data
+    logger.info(
+        "Unsubscribed email=%s id=%s enabled=%s",
+        record.get("email"),
+        record.get("id"),
+        record.get("enabled"),
+    )
+    return record
+
+
 def upsert_user_subscription(payload: SubscribeRequest) -> dict[str, Any]:
     """
     Insert or update a user delivery profile keyed by email.
     Never writes holdings, buy prices, or API keys.
+    Does not overwrite unsubscribe_token on update.
     """
     row = {
         "email": payload.email,
@@ -88,6 +167,15 @@ def upsert_user_subscription(payload: SubscribeRequest) -> dict[str, Any]:
         raise RuntimeError("Database upsert returned no rows")
 
     record = data[0] if isinstance(data, list) else data
+    # New installs rely on DB default; legacy rows may still lack a token.
+    if not record.get("unsubscribe_token"):
+        try:
+            ensure_unsubscribe_token(record)
+        except Exception:
+            logger.exception(
+                "Upsert OK but could not ensure unsubscribe_token for email=%s",
+                payload.email,
+            )
     logger.info(
         "Upsert OK id=%s email=%s updated_at=%s",
         record.get("id"),

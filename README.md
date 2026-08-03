@@ -62,7 +62,7 @@ API docs: http://127.0.0.1:8000/docs
 
 Apply schema once in the Supabase SQL Editor using `backend/database_schema.sql`, then enable RLS and lock grants for `anon` / `authenticated` (service role only for the API).
 
-Existing databases: also run `backend/migrations/001_add_last_sent_at.sql` so cron can dedupe overlapping sends.
+Existing databases: also run `backend/migrations/001_add_last_sent_at.sql` and `backend/migrations/002_add_unsubscribe_token.sql` so cron can dedupe overlapping sends and emails can one-click unsubscribe.
 
 ### 2. Chrome extension
 
@@ -91,6 +91,7 @@ For scheduled email dispatch, add under **Settings → Secrets and variables →
 | `SUPABASE_SECRET_KEY` | Supabase secret / service_role key |
 | `RESEND_API_KEY` | Resend sending key (`re_…`) |
 | `REPORT_FROM_EMAIL` | e.g. `Stock Agent <onboarding@resend.dev>` |
+| `PUBLIC_API_BASE_URL` | Public API origin for email unsubscribe links (optional locally) |
 
 Workflow: `.github/workflows/cron-dispatch.yml`  
 Manual run: **Actions → Scheduled report dispatch → Run workflow**
@@ -108,9 +109,14 @@ Always `git pull` before new work so you pick up the bot bump commit.
 | Endpoint | Purpose |
 |----------|---------|
 | `POST /api/subscribe` | Upsert email delivery preferences |
+| `GET /api/unsubscribe?token=…` | One-click unsubscribe (email link; sets `enabled=false`) |
+| `POST /api/unsubscribe` | Same via JSON `{ "token" }` or `?token=` |
+| `DELETE /api/unsubscribe/{token}` | Same via path token |
 | `POST /api/quotes/snapshot` | Live metrics + grades for a watchlist |
 
-Both accept tickers only. No holdings. No Gemini keys.
+Both subscribe and snapshot accept tickers only. No holdings. No Gemini keys.
+
+Set `PUBLIC_API_BASE_URL` in `backend/.env` (and GitHub Actions if needed) so report emails include a working unsubscribe link.
 
 ## Collaborators
 

@@ -28,6 +28,9 @@ create table if not exists public.users (
   -- Soft disable without deleting the row
   enabled boolean not null default true,
 
+  -- One-click unsubscribe (opaque; never email-guessable)
+  unsubscribe_token uuid not null default gen_random_uuid(),
+
   -- Cron send dedupe: set after a successful email for a preferred-hour slot
   last_sent_at timestamptz,
 
@@ -35,6 +38,7 @@ create table if not exists public.users (
   updated_at timestamptz not null default now(),
 
   constraint users_email_unique unique (email),
+  constraint users_unsubscribe_token_unique unique (unsubscribe_token),
   constraint users_email_format check (position('@' in email) > 1),
   constraint users_watchlist_cap check (cardinality(watchlist) <= 25),
   constraint users_hours_cap check (cardinality(preferred_hours) <= 8),
@@ -78,3 +82,6 @@ comment on column public.users.preferred_hours is
 
 comment on column public.users.last_sent_at is
   'UTC timestamp of last successful cron email; used to skip duplicate sends in the same preferred-hour window.';
+
+comment on column public.users.unsubscribe_token is
+  'Opaque token for one-click email unsubscribe (GET/POST/DELETE /api/unsubscribe).';

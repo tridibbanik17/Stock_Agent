@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -17,6 +18,13 @@ def _plain_ticker(ticker: str) -> str:
     Insert a zero-width space after each dot (display looks the same).
     """
     return str(ticker or "").replace(".", ".\u200b")
+
+
+def build_unsubscribe_url(token: str, base_url: str | None = None) -> str:
+    """One-click GET link embedded in report emails."""
+    base = (base_url or os.getenv("PUBLIC_API_BASE_URL", "http://127.0.0.1:8000")).strip()
+    base = base.rstrip("/")
+    return f"{base}/api/unsubscribe?token={quote(str(token), safe='')}"
 
 
 def _metric_glossary() -> list[str]:
@@ -54,7 +62,11 @@ def _metric_glossary() -> list[str]:
     ]
 
 
-def format_report_text(email: str, quotes: list[dict[str, Any]]) -> str:
+def format_report_text(
+    email: str,
+    quotes: list[dict[str, Any]],
+    unsubscribe_url: str | None = None,
+) -> str:
     lines = [
         "STOCK AGENT - SCHEDULED PORTFOLIO INTELLIGENCE",
         "=" * 46,
@@ -87,10 +99,26 @@ def format_report_text(email: str, quotes: list[dict[str, Any]]) -> str:
         lines.append("")
 
     lines.extend(_metric_glossary())
+    if unsubscribe_url:
+        lines.extend(
+            [
+                "",
+                "UNSUBSCRIBE",
+                "-" * 46,
+                "To stop these emails (one click):",
+                unsubscribe_url,
+                "You can turn them back on anytime from the Stock Agent extension.",
+            ]
+        )
     return "\n".join(lines)
 
 
-def send_report_email(to_email: str, subject: str, body: str) -> bool:
+def send_report_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    unsubscribe_url: str | None = None,
+) -> bool:
     """
     Send via Resend HTTP API when RESEND_API_KEY is set.
     Otherwise log the report (dry-run) so cron still exercises the pipeline.
@@ -107,12 +135,19 @@ def send_report_email(to_email: str, subject: str, body: str) -> bool:
         )
         return True
 
-    payload = {
+    payload: dict[str, Any] = {
         "from": from_addr,
         "to": [to_email],
         "subject": subject,
         "text": body,
     }
+    if unsubscribe_url:
+        # Helps Gmail/Outlook show a native unsubscribe control.
+        payload["headers"] = {
+            "List-Unsubscribe": f"<{unsubscribe_url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        }
+
     try:
         response = httpx.post(
             "https://api.resend.com/emails",

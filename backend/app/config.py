@@ -31,6 +31,11 @@ def get_settings() -> dict:
         "supabase_url": os.getenv("SUPABASE_URL", "").strip().rstrip("/"),
         "supabase_service_role_key": secret,
         "supabase_publishable_key": publishable,
+        "public_api_base_url": os.getenv(
+            "PUBLIC_API_BASE_URL", "http://127.0.0.1:8000"
+        )
+        .strip()
+        .rstrip("/"),
         "log_level": os.getenv("LOG_LEVEL", "INFO").upper(),
         "host": os.getenv("HOST", "0.0.0.0"),
         "port": int(os.getenv("PORT", "8000")),

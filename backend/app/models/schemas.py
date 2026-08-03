@@ -151,6 +151,21 @@ class SubscribeResponse(BaseModel):
     updated_at: str | None = None
 
 
+class UnsubscribeRequest(BaseModel):
+    """Disable scheduled emails via opaque unsubscribe token (not email alone)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=8, max_length=64)
+
+
+class UnsubscribeResponse(BaseModel):
+    ok: bool = True
+    enabled: bool = False
+    email: str | None = None
+    message: str = "Unsubscribed. Scheduled emails are off."
+
+
 class SnapshotRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -27,11 +27,19 @@ from dotenv import load_dotenv
 
 load_dotenv(_BACKEND_ROOT / ".env")
 
-from app.services.email_report import format_report_text, send_report_email
+from app.services.email_report import (
+    build_unsubscribe_url,
+    format_report_text,
+    send_report_email,
+)
 from app.services.grading import attach_grades
 from app.services.market_data import analyze_watchlist
 from app.services.news import fetch_news_for_watchlist
-from app.services.supabase_client import get_supabase, mark_user_sent
+from app.services.supabase_client import (
+    ensure_unsubscribe_token,
+    get_supabase,
+    mark_user_sent,
+)
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -170,10 +178,21 @@ def dispatch_user(row: dict) -> bool:
         except Exception:
             logger.exception("News fetch failed; continuing without news flags")
     quotes = attach_grades(metrics, news_flags)
-    body = format_report_text(email, quotes)
+    unsubscribe_url = None
+    try:
+        token = ensure_unsubscribe_token(row)
+        unsubscribe_url = build_unsubscribe_url(token)
+    except Exception:
+        logger.exception(
+            "Could not build unsubscribe link for %s; sending without it",
+            email,
+        )
+    body = format_report_text(email, quotes, unsubscribe_url=unsubscribe_url)
     sent_at = datetime.now(timezone.utc)
     subject = f"Stock Agent Report - {sent_at.strftime('%Y-%m-%d')}"
-    ok = send_report_email(email, subject, body)
+    ok = send_report_email(
+        email, subject, body, unsubscribe_url=unsubscribe_url
+    )
     if not ok and os.getenv("GITHUB_ACTIONS"):
         print(
             f"::error::Email send failed for {email}. Check RESEND_API_KEY and REPORT_FROM_EMAIL secrets.",

@@ -35,7 +35,7 @@ app.add_middleware(
     allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_origin_regex=r"chrome-extension://[\w-]+",
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Accept"],
 )
 
@@ -66,6 +66,7 @@ async def root() -> dict[str, str]:
         "health": "/health",
         "docs": "/docs",
         "subscribe": "POST /api/subscribe",
+        "unsubscribe": "GET|POST|DELETE /api/unsubscribe",
         "quotes": "POST /api/quotes/snapshot",
     }
 

@@ -6,8 +6,9 @@
 Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 ```
 
-- **Supabase** stores only email, tickers, schedule, and `last_sent_at` (not holdings, not grades).
+- **Supabase** stores only email, tickers, schedule, `last_sent_at`, and `unsubscribe_token` (not holdings, not grades).
 - **Cron dedupe:** after a successful send, `last_sent_at` is stamped so overlapping/retry ticks skip that preferred-hour slot. A later slot the same day still sends.
+- **Unsubscribe:** report emails include `GET /api/unsubscribe?token=…` (also `POST` / `DELETE`). That flips `enabled=false` without the extension.
 - **Gemini** is optional BYOK in the extension; it is **not** used for grades or email today.
 
 ## Tags / fields and where they come from
@@ -35,6 +36,7 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 |----------|-----|
 | `POST /api/quotes/snapshot` | yfinance + grade for popup **Refresh** |
 | `POST /api/subscribe` | Save email / tickers / schedule to Supabase (no market data) |
+| `GET` / `POST` / `DELETE /api/unsubscribe` | Soft-disable emails via opaque `unsubscribe_token` |
 
 ## Grade bands (our rules)
 
