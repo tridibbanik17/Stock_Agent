@@ -517,6 +517,78 @@ def fanout_dispatch(
     return failures
 
 
+def evaluate_due_now(
+    row: dict,
+    now_utc: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Cheap gate check (no yfinance / Resend): is this user inside a send window?
+    status: due | not_due | disabled | empty_watchlist | daily_cap | already_sent
+    """
+    now = now_utc or datetime.now(timezone.utc)
+    if not row.get("enabled", True):
+        return {"status": "disabled", "preferred": None}
+    if not normalize_watchlist(row.get("watchlist")):
+        return {"status": "empty_watchlist", "preferred": None}
+
+    preferred = matching_due_slot(user_to_schedule(row), now)
+    if preferred is None:
+        return {"status": "not_due", "preferred": None}
+    if daily_send_limit_reached(row, now):
+        return {"status": "daily_cap", "preferred": preferred}
+    if already_sent_for_slot(row, preferred):
+        return {"status": "already_sent", "preferred": preferred}
+    return {"status": "due", "preferred": preferred}
+
+
+def dispatch_if_due_now(
+    row: dict,
+    now_utc: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    If this user is inside the early/overdue window right now, send once.
+    Used by Save & Subscribe so users do not wait for the next GitHub cron tick.
+    """
+    now = now_utc or datetime.now(timezone.utc)
+    email = row.get("email")
+    gate = evaluate_due_now(row, now)
+    status = str(gate.get("status") or "not_due")
+    preferred = gate.get("preferred")
+
+    if status != "due" or preferred is None:
+        logger.info(
+            "Subscribe immediate-send skip email=%s reason=%s",
+            email,
+            status,
+        )
+        return {"attempted": False, "sent": False, "status": status}
+
+    logger.info(
+        "Subscribe immediate-send starting email=%s slot=%s",
+        email,
+        preferred.isoformat(),
+    )
+    try:
+        watchlist = normalize_watchlist(row.get("watchlist"))
+        cache = build_shared_quote_cache(watchlist)
+        ok = dispatch_user(row, cache, preferred)
+    except Exception:
+        logger.exception("Subscribe immediate-send crashed email=%s", email)
+        return {"attempted": True, "sent": False, "status": "failed"}
+
+    if ok:
+        logger.info("Subscribe immediate-send OK email=%s", email)
+        return {
+            "attempted": True,
+            "sent": True,
+            "status": "sent",
+            "slot": preferred.isoformat(),
+        }
+
+    logger.warning("Subscribe immediate-send failed email=%s", email)
+    return {"attempted": True, "sent": False, "status": "failed"}
+
+
 def run_due_dispatch(now_utc: datetime | None = None) -> dict[str, Any]:
     """
     Load enabled users, send anyone in early or overdue windows.

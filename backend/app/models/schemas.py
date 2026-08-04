@@ -164,6 +164,9 @@ class SubscribeResponse(BaseModel):
     enabled: bool
     created_at: str | None = None
     updated_at: str | None = None
+    # Set when Save & Subscribe lands inside the early/overdue send window.
+    report_sent_now: bool = False
+    report_send_status: str | None = None
 
 
 class UnsubscribeRequest(BaseModel):

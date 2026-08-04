@@ -9,7 +9,7 @@ import os
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, Body, Header, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Body, Header, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 
 from app.api.abuse import (
@@ -36,7 +36,12 @@ logger = logging.getLogger("stock_agent.api")
 router = APIRouter()
 
 
-def _to_subscribe_response(record: dict[str, Any]) -> SubscribeResponse:
+def _to_subscribe_response(
+    record: dict[str, Any],
+    *,
+    report_sent_now: bool = False,
+    report_send_status: str | None = None,
+) -> SubscribeResponse:
     return SubscribeResponse(
         id=str(record.get("id", "")),
         email=str(record.get("email", "")),
@@ -48,6 +53,8 @@ def _to_subscribe_response(record: dict[str, Any]) -> SubscribeResponse:
         enabled=bool(record.get("enabled", True)),
         created_at=str(record["created_at"]) if record.get("created_at") else None,
         updated_at=str(record["updated_at"]) if record.get("updated_at") else None,
+        report_sent_now=report_sent_now,
+        report_send_status=report_send_status,
     )
 
 
@@ -147,6 +154,7 @@ def _run_unsubscribe(token: str) -> dict[str, Any]:
 async def subscribe(
     body: SubscribeRequest,
     _: ProtectSubscribe,
+    background_tasks: BackgroundTasks,
 ) -> SubscribeResponse:
     logger.info(
         "POST /api/subscribe email=%s watchlist=%s frequency=%s",
@@ -157,7 +165,6 @@ async def subscribe(
 
     try:
         record = upsert_user_subscription(body)
-        return _to_subscribe_response(record)
     except RuntimeError as exc:
         logger.error("Subscribe configuration error: %s", exc)
         raise HTTPException(
@@ -176,6 +183,36 @@ async def subscribe(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Database connection failed. Check Supabase credentials and schema.",
         ) from exc
+
+    # If due now, kick send in the background so Save stays fast (yfinance can be slow).
+    report_sent_now = False
+    report_send_status: str | None = "not_due"
+    try:
+        from app.services.dispatch import dispatch_if_due_now, evaluate_due_now
+
+        gate = evaluate_due_now(record)
+        report_send_status = str(gate.get("status") or "not_due")
+        if report_send_status == "due":
+            background_tasks.add_task(dispatch_if_due_now, record)
+            report_sent_now = True
+            report_send_status = "sending"
+            logger.info(
+                "Queued immediate report after subscribe email=%s",
+                body.email,
+            )
+    except Exception:
+        logger.exception(
+            "Immediate dispatch queue after subscribe failed email=%s",
+            body.email,
+        )
+        report_send_status = "failed"
+        report_sent_now = False
+
+    return _to_subscribe_response(
+        record,
+        report_sent_now=report_sent_now,
+        report_send_status=report_send_status,
+    )
 
 
 def _require_dispatch_secret(x_dispatch_secret: str | None) -> None:

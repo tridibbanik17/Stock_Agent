@@ -1276,12 +1276,25 @@ async function onSaveAndSubscribe() {
       userId: response?.id || response?.userId || state.userId,
     });
 
-    setStatus(
-      `Saved & Subscribed successfully! ${formatScheduleLabel(outbound.schedule)} → ${outbound.email}`,
-      "ok",
-      "subscribe",
-      "persistent"
-    );
+    const scheduleLabel = formatScheduleLabel(outbound.schedule);
+    let message = `Saved & Subscribed successfully! ${scheduleLabel} → ${outbound.email}`;
+    if (response?.report_sent_now || response?.report_send_status === "sending") {
+      message =
+        `Saved & Subscribed — send window is open, report is emailing now. ` +
+        `${scheduleLabel} → ${outbound.email}`;
+    } else if (response?.report_send_status === "failed") {
+      message =
+        `Saved & Subscribed, but could not start the immediate email. ` +
+        `Cron will retry while your window is open. ${scheduleLabel} → ${outbound.email}`;
+    } else if (response?.report_send_status === "daily_cap") {
+      message =
+        `Saved & Subscribed (daily email cap reached). ${scheduleLabel} → ${outbound.email}`;
+    } else if (response?.report_send_status === "already_sent") {
+      message =
+        `Saved & Subscribed (already sent for this time slot). ${scheduleLabel} → ${outbound.email}`;
+    }
+
+    setStatus(message, "ok", "subscribe", "persistent");
   } catch (error) {
     console.error("[SUBSCRIBE] failed", error);
     setStatus(error?.message || "Subscribe failed", "error", "subscribe", "error");

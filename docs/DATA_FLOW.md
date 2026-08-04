@@ -7,7 +7,7 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 ```
 
 - **Supabase** stores only email, tickers, schedule, `last_sent_at`, daily send counters, and `unsubscribe_token` (not holdings, not grades).
-- **Subscribe** is email-keyed upsert: Save & Subscribe overwrites that address’s watchlist and schedule.
+- **Subscribe** is email-keyed upsert: Save & Subscribe overwrites that address’s watchlist and schedule. If the saved schedule is already inside the early/overdue window, the API emails that user **immediately** (no wait for GitHub cron).
 - **Delivery audit:** each cron send writes a `delivery_logs` row (`success` / `failure` / `dry_run`, Resend id, truncated error) — query in Supabase instead of digging through Actions logs.
 - **HTML email:** cron always sends a full HTML report (plus plain-text fallback) on schedule.
 - **Hybrid B dispatch:** GitHub Actions every 5 minutes `POST`s `/api/internal/dispatch-due` (header `X-Dispatch-Secret`). The API sends users in the early window (`preferred − DISPATCH_EARLY_MINUTES` … `preferred`) or overdue catch-up (up to `DISPATCH_LATE_MINUTES`). Preferred time is a deadline; `last_sent_at` is stamped at the slot instant for dedupe. A separate daily counter (`daily_send_count` / `daily_send_on`) caps successful sends at 2 per user local calendar day so editing times cannot bypass the limit.
