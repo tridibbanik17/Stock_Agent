@@ -401,7 +401,12 @@ def dispatch_user(
         )
 
     sent_at = datetime.now(timezone.utc)
-    subject = f"Stock Agent Report - {sent_at.strftime('%Y-%m-%d')}"
+    # Subject date = user's local calendar day (UTC made 8–11 PM ET look like "tomorrow").
+    if preferred_local is not None:
+        report_day = preferred_local.date()
+    else:
+        report_day = _local_now(user_to_schedule(row), sent_at).date()
+    subject = f"Stock Agent Report - {report_day.isoformat()}"
     text_body = format_report_text(email, quotes, unsubscribe_url=unsubscribe_url)
     html_body = format_report_html(email, quotes, unsubscribe_url=unsubscribe_url)
 
