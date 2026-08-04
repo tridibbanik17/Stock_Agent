@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -259,6 +260,49 @@ def _peer_fundamentals(symbol: str, local_info: dict[str, Any]) -> dict[str, Any
     return out
 
 
+def _fast_last_price(stock: yf.Ticker) -> float | None:
+    """Cheap last-price probe; often works when full info is rate-limited."""
+    try:
+        fast = getattr(stock, "fast_info", None)
+        if fast is None:
+            return None
+        if isinstance(fast, dict):
+            return _safe_float(
+                fast.get("last_price")
+                or fast.get("lastPrice")
+                or fast.get("regular_market_price")
+            )
+        return _safe_float(
+            getattr(fast, "last_price", None)
+            or getattr(fast, "lastPrice", None)
+            or getattr(fast, "regular_market_price", None)
+        )
+    except Exception:
+        return None
+
+
+def _load_history(stock: yf.Ticker) -> pd.DataFrame:
+    """Try longer then shorter windows; empty frame on total failure."""
+    for period in ("2y", "1y", "6mo", "3mo", "1mo", "5d"):
+        try:
+            history = stock.history(period=period)
+            if history is not None and not history.empty:
+                return history
+        except Exception:
+            logger.debug("history(%s) failed for %s", period, getattr(stock, "ticker", "?"))
+            continue
+    return pd.DataFrame()
+
+
+def _safe_info(stock: yf.Ticker) -> dict[str, Any]:
+    try:
+        info = stock.info or {}
+        return info if isinstance(info, dict) else {}
+    except Exception:
+        logger.warning("stock.info failed for %s", getattr(stock, "ticker", "?"))
+        return {}
+
+
 def analyze_ticker(ticker: str) -> dict[str, Any]:
     """Fetch price + core metrics for one symbol. Never touches portfolio lots."""
     symbol = ticker.strip().upper()
@@ -267,15 +311,33 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
 
     try:
         stock = yf.Ticker(symbol)
-        info = stock.info or {}
-        price = _safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
+
+        # Price first: history / fast_info are more reliable than stock.info under load.
+        history = _load_history(stock)
+        price = _fast_last_price(stock)
+        if price is not None:
+            price = round(price, 2)
+        if history is not None and not history.empty:
+            last_close = float(history["Close"].iloc[-1])
+            if price is None:
+                price = round(last_close, 2)
+
+        info = _safe_info(stock)
+        if price is None:
+            price = _safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
+            if price is not None:
+                price = round(price, 2)
+
         currency = resolve_currency(symbol, info)
         peg = _derive_peg(info)
 
-        peer = _peer_fundamentals(symbol, info)
-        if peg is None and peer.get("pegRatio") is not None:
-            peg = peer["pegRatio"]
-        # Prefer local sector/industry; fill gaps from matched US peer (CDRs often blank).
+        peer: dict[str, Any] = {}
+        # Only hit the US peer when local fundamentals are thin (CDRs / dual lists).
+        if peg is None or not info.get("sector") or not info.get("industry"):
+            peer = _peer_fundamentals(symbol, info)
+            if peg is None and peer.get("pegRatio") is not None:
+                peg = peer["pegRatio"]
+
         sector = info.get("sector") or peer.get("sector")
         industry = info.get("industry") or peer.get("industry")
         enriched_info = {**info, "sector": sector, "industry": industry}
@@ -310,8 +372,6 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
 
         roe_list = _roe_trend(income_stmt, balance_sheet)
 
-        # Prefer 2y so newer listings / CDRs still get as much history as Yahoo has.
-        history = stock.history(period="2y")
         above_sma: bool | None = None
         sma_200: float | None = None
         sma_window: int | None = None
@@ -320,9 +380,7 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             last_close = float(history["Close"].iloc[-1])
             if price is None:
                 price = round(last_close, 2)
-            # RSI only needs ~15 bars; do not wait for a full 200-day window.
             rsi = _rsi(history["Close"])
-            # True 200-SMA when possible; otherwise use all available sessions (≥50).
             if len(history) >= 50:
                 window = 200 if len(history) >= 200 else len(history)
                 sma_window = window
@@ -387,18 +445,18 @@ def analyze_ticker_with_retry(
 ) -> dict[str, Any]:
     """
     Call analyze_ticker with short retries (helps transient yfinance empty/rate-limit).
-    Env: QUOTE_FETCH_RETRIES (default 3), QUOTE_FETCH_BACKOFF_SECONDS (default 0.75).
+    Env: QUOTE_FETCH_RETRIES (default 4), QUOTE_FETCH_BACKOFF_SECONDS (default 1.0).
     """
     if attempts is None:
         try:
-            attempts = max(1, int(os.getenv("QUOTE_FETCH_RETRIES", "3")))
+            attempts = max(1, int(os.getenv("QUOTE_FETCH_RETRIES", "4")))
         except ValueError:
-            attempts = 3
+            attempts = 4
     if backoff_seconds is None:
         try:
-            backoff_seconds = max(0.0, float(os.getenv("QUOTE_FETCH_BACKOFF_SECONDS", "0.75")))
+            backoff_seconds = max(0.0, float(os.getenv("QUOTE_FETCH_BACKOFF_SECONDS", "1.0")))
         except ValueError:
-            backoff_seconds = 0.75
+            backoff_seconds = 1.0
 
     last: dict[str, Any] | None = None
     for attempt in range(1, attempts + 1):
@@ -408,21 +466,23 @@ def analyze_ticker_with_retry(
                 logger.info("Quote retry succeeded ticker=%s attempt=%d", ticker, attempt)
             return last
         if attempt < attempts:
+            delay = backoff_seconds * attempt + random.uniform(0.15, 0.6)
             logger.warning(
-                "Quote fetch incomplete ticker=%s attempt=%d/%d error=%s — retrying",
+                "Quote fetch incomplete ticker=%s attempt=%d/%d error=%s — retrying in %.1fs",
                 ticker,
                 attempt,
                 attempts,
                 last.get("error"),
+                delay,
             )
-            time.sleep(backoff_seconds * attempt)
+            time.sleep(delay)
     assert last is not None
     return last
 
 
 def analyze_watchlist(
     tickers: list[str],
-    max_workers: int = 6,
+    max_workers: int = 4,
     max_tickers: int | None = 25,
 ) -> list[dict[str, Any]]:
     """
@@ -430,6 +490,8 @@ def analyze_watchlist(
 
     `max_tickers` defaults to 25 for the popup API. Pass None (or a higher
     limit) for cron so one tick can grade the union of many users' symbols.
+    Failures get a sequential second pass so one Yahoo blip does not leave
+    mega-caps as permanent "Quote unavailable" in the popup.
     """
     unique = []
     for raw in tickers:
@@ -443,7 +505,8 @@ def analyze_watchlist(
 
     logger.info("Fetching market data for %d unique ticker(s)", len(unique))
     results: dict[str, dict[str, Any]] = {}
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(unique))) as pool:
+    workers = max(1, min(max_workers, len(unique)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(analyze_ticker_with_retry, t): t for t in unique}
         for fut in as_completed(futures):
             ticker = futures[fut]
@@ -459,5 +522,29 @@ def analyze_watchlist(
                     "asOf": datetime.now(timezone.utc).isoformat(),
                     "assetClass": classify_asset(ticker),
                 }
+
+    # Second pass: cooler sequential retries for anything still missing a price.
+    missing = [t for t in unique if _quote_needs_retry(results.get(t) or {})]
+    if missing:
+        logger.warning(
+            "Second-pass quote fetch for %d ticker(s): %s",
+            len(missing),
+            ", ".join(missing),
+        )
+        for ticker in missing:
+            time.sleep(0.75)
+            try:
+                retry_attempts = max(2, int(os.getenv("QUOTE_FETCH_RETRIES", "4")))
+            except ValueError:
+                retry_attempts = 4
+            try:
+                retry_backoff = max(1.0, float(os.getenv("QUOTE_FETCH_BACKOFF_SECONDS", "1.0")))
+            except ValueError:
+                retry_backoff = 1.0
+            results[ticker] = analyze_ticker_with_retry(
+                ticker,
+                attempts=retry_attempts,
+                backoff_seconds=retry_backoff,
+            )
 
     return [results[t] for t in unique if t in results]
