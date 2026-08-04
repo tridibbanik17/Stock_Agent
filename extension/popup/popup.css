@@ -181,9 +181,9 @@ button.preset-chip {
 }
 
 button.preset-chip:hover {
-  color: var(--text);
-  border-color: #3d5166;
-  background: #15202b;
+  color: #e8f3ff;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 28%, #15202b);
 }
 
 button.preset-chip.is-active {
@@ -209,9 +209,9 @@ button.day-chip {
 }
 
 button.day-chip:hover:not(:disabled) {
-  color: var(--text);
-  border-color: #3d5166;
-  background: #15202b;
+  color: #e8f3ff;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 24%, #15202b);
 }
 
 button.day-chip.is-active {
@@ -310,6 +310,18 @@ button.add-time-btn {
   font-size: 0.74rem;
 }
 
+button.add-time-btn:hover:not(:disabled) {
+  color: #e8f3ff;
+  background: color-mix(in srgb, var(--accent) 22%, #15202b);
+  border-color: var(--accent);
+}
+
+button.time-remove:hover {
+  color: #fff;
+  background: #8b2e2e;
+  border-color: #c0392b;
+}
+
 .schedule-summary {
   margin: 0;
   font-size: 0.74rem;
@@ -321,7 +333,8 @@ button.add-time-btn {
   margin: 4px 0 0;
   font-size: 0.72rem;
   color: var(--muted);
-  line-height: 1.35;
+  line-height: 1.45;
+  white-space: pre-line;
 }
 
 .linkish-btn {
@@ -563,7 +576,8 @@ button {
 }
 
 button:hover {
-  background: var(--accent-hover);
+  background: #5eb8f7;
+  color: #031018;
 }
 
 button:disabled {
@@ -574,6 +588,13 @@ button:disabled {
 button.primary {
   width: 100%;
   padding: 9px 12px;
+  background: linear-gradient(180deg, #3aa3f0 0%, #2a8ad4 100%);
+  color: #031018;
+}
+
+button.primary:hover {
+  background: linear-gradient(180deg, #62b8f7 0%, #3aa3f0 100%);
+  color: #021018;
 }
 
 button.ghost {
@@ -585,7 +606,8 @@ button.ghost {
 
 button.ghost:hover {
   color: var(--text);
-  border-color: #3d5166;
+  background: #1e2a38;
+  border-color: #4a627a;
 }
 
 button.ghost.wide {
@@ -595,6 +617,15 @@ button.ghost.wide {
 button.remove {
   padding: 6px 8px;
   font-size: 0.68rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+button.remove:hover {
+  color: #fff;
+  background: #8b2e2e;
+  border-color: #c0392b;
 }
 
 /* Watchlist table */
@@ -670,6 +701,37 @@ button.remove {
 
 .quote-pending {
   color: #6f8092;
+}
+
+.quote-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #7eb7e8;
+  font-family: var(--font);
+}
+
+.quote-loading::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  animation: quote-spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes quote-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+button.refresh-quotes.is-loading {
+  color: #7eb7e8;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, #15202b);
 }
 
 .quote-error {
@@ -849,9 +911,9 @@ button.clear-settings {
 }
 
 button.clear-settings:hover {
-  color: var(--text);
-  border-color: #3d5166;
-  background: transparent;
+  color: #fff;
+  border-color: #c0392b;
+  background: #8b2e2e;
 }
 
 button.ampm-btn {

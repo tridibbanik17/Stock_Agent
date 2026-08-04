@@ -243,7 +243,7 @@ export function computeNextSendAt(schedule, now = new Date()) {
 }
 
 /**
- * Popup line: when the next report is aimed for (may send up to 10 min early).
+ * Popup line: next preferred time + delivery window hint.
  * @param {ScheduleConfig|unknown} schedule
  * @param {Date} [now]
  * @returns {string}
@@ -263,7 +263,82 @@ export function formatNextEmailLabel(schedule, now = new Date()) {
     hour: "numeric",
     minute: "2-digit",
   });
-  return `Next email: ${when} · may send up to 10 min early`;
+  // Early window is 10 min before preferred; overdue catch-up can run after.
+  return `Next email: ${when} · window opens 10 min early`;
+}
+
+/**
+ * @typedef {{
+ *   status: string,
+ *   at: string|null,
+ *   detail: string
+ * }} DeliveryStatusHint
+ */
+
+/**
+ * Local-only hint about the last Save & Subscribe / send attempt.
+ * @returns {Promise<DeliveryStatusHint>}
+ */
+export async function getDeliveryStatusHint() {
+  const result = await chrome.storage.local.get("deliveryStatusHint");
+  const raw = result.deliveryStatusHint;
+  if (!raw || typeof raw !== "object") {
+    return { status: "none", at: null, detail: "" };
+  }
+  return {
+    status: String(raw.status || "none"),
+    at: raw.at ? String(raw.at) : null,
+    detail: String(raw.detail || ""),
+  };
+}
+
+/**
+ * @param {Partial<DeliveryStatusHint>} patch
+ * @returns {Promise<DeliveryStatusHint>}
+ */
+export async function setDeliveryStatusHint(patch) {
+  const prev = await getDeliveryStatusHint();
+  const next = {
+    status: String(patch.status ?? prev.status ?? "none"),
+    at: patch.at !== undefined ? patch.at : prev.at,
+    detail: String(patch.detail ?? prev.detail ?? ""),
+  };
+  await chrome.storage.local.set({ deliveryStatusHint: next });
+  return next;
+}
+
+/**
+ * Human line for schedule-next under the summary.
+ * @param {ScheduleConfig|unknown} schedule
+ * @param {DeliveryStatusHint|null} [hint]
+ * @param {Date} [now]
+ * @returns {string}
+ */
+export function formatDeliveryStatusLine(schedule, hint = null, now = new Date()) {
+  const nextLine = formatNextEmailLabel(schedule, now);
+  if (!hint || !hint.status || hint.status === "none" || hint.status === "not_due") {
+    return nextLine;
+  }
+
+  if (hint.status === "sending") {
+    return `${nextLine}\nLast save: report is sending now (check inbox in ~1 min).`;
+  }
+  if (hint.status === "sent") {
+    return `${nextLine}\nLast save: report emailed successfully.`;
+  }
+  if (hint.status === "failed") {
+    return `${nextLine}\nLast save: email failed — cron retries while the window is open.`;
+  }
+  if (hint.status === "daily_cap") {
+    return `${nextLine}\nDaily cap reached (max 2 emails today). Next sends tomorrow.`;
+  }
+  if (hint.status === "already_sent") {
+    return `${nextLine}\nAlready sent for this time slot today.`;
+  }
+  if (hint.detail) {
+    return `${nextLine}\n${hint.detail}`;
+  }
+  return nextLine;
 }
 
 /**
@@ -456,7 +531,10 @@ export async function setAutoAnalyze(enabled) {
  * Does not call any network endpoint.
  */
 export async function clearAllLocalSettings() {
-  await chrome.storage.local.remove(Object.values(STORAGE_KEYS));
+  await chrome.storage.local.remove([
+    ...Object.values(STORAGE_KEYS),
+    "deliveryStatusHint",
+  ]);
 }
 
 // ---------------------------------------------------------------------------

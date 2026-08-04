@@ -15,8 +15,10 @@ import {
   cacheCloudProfile,
   clearAllLocalSettings,
   defaultSchedule,
-  formatScheduleLabel,
+  formatDeliveryStatusLine,
   formatNextEmailLabel,
+  formatScheduleLabel,
+  getDeliveryStatusHint,
   getGeminiKey,
   getHoldings,
   getLocalState,
@@ -24,6 +26,7 @@ import {
   normalizeSchedule,
   setAutoAnalyze,
   setDelivery,
+  setDeliveryStatusHint,
   setGeminiKey,
   setHoldings,
   setWatchlist,
@@ -76,7 +79,10 @@ const els = {
 };
 
 /** @type {Record<string, QuoteSnapshot>} */
+/** @type {Record<string, QuoteSnapshot>} */
 let quoteCache = {};
+/** True while /quotes/snapshot is in flight (show per-row loading UI). */
+let quotesLoading = false;
 
 /** Highlighted row index in ticker suggestions (-1 = none). */
 let suggestActiveIndex = -1;
@@ -205,7 +211,7 @@ function bindEvents() {
     const target = /** @type {HTMLElement} */ (event.target);
     if (target.matches("select[data-part]")) {
       clearStatus("subscribe");
-      refreshScheduleSummary();
+      void refreshScheduleSummary();
     }
   });
 
@@ -430,7 +436,7 @@ function applyScheduleToDom(schedule) {
   setChipDays(cfg.days);
   syncPresetChipHighlight(cfg.days);
   renderTimeRows(cfg.times);
-  refreshScheduleSummary();
+  void refreshScheduleSummary();
 }
 
 /**
@@ -523,10 +529,12 @@ function renderTimeRows(times) {
       : "Add another send time";
 }
 
-function refreshScheduleSummary() {
+async function refreshScheduleSummary() {
   const schedule = readScheduleFromDom();
   els.scheduleSummary.textContent = formatScheduleLabel(schedule);
-  els.scheduleNext.textContent = formatNextEmailLabel(schedule);
+  const hint = await getDeliveryStatusHint();
+  els.scheduleNext.textContent = formatDeliveryStatusLine(schedule, hint);
+  els.scheduleNext.title = formatNextEmailLabel(schedule);
 }
 
 /** @param {HTMLButtonElement} btn */
@@ -539,7 +547,7 @@ function onAmPmClick(btn) {
     sibling.classList.toggle("is-active", active);
     sibling.setAttribute("aria-pressed", active ? "true" : "false");
   }
-  refreshScheduleSummary();
+  void refreshScheduleSummary();
 }
 
 function onAddSendTime() {
@@ -561,7 +569,7 @@ function onAddSendTime() {
   }
 
   renderTimeRows([...times, suggestion]);
-  refreshScheduleSummary();
+  void refreshScheduleSummary();
 }
 
 /** @param {HTMLButtonElement} btn */
@@ -570,7 +578,7 @@ function onRemoveSendTime(btn) {
   if (!row) return;
   row.remove();
   renderTimeRows(readTimesFromDom());
-  refreshScheduleSummary();
+  void refreshScheduleSummary();
 }
 
 /** @param {string} preset */
@@ -585,7 +593,7 @@ function onDayPreset(preset) {
   // Force Mon–Sun chips to match the macro selection visually.
   setChipDays(days);
   syncPresetChipHighlight(days);
-  refreshScheduleSummary();
+  void refreshScheduleSummary();
 }
 
 /** @param {HTMLButtonElement} chip */
@@ -602,7 +610,7 @@ function onDayChipClick(chip) {
     chip.setAttribute("aria-pressed", "false");
   }
   syncPresetChipHighlight(readSelectedDays());
-  refreshScheduleSummary();
+  void refreshScheduleSummary();
 }
 
 /**
@@ -778,6 +786,14 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
  * @returns {Node[]}
  */
 function buildQuoteMetaNodes(quote) {
+  if (quotesLoading && (!quote || (quote.price == null && !quote.error))) {
+    const loading = document.createElement("span");
+    loading.className = "quote-loading";
+    loading.setAttribute("aria-busy", "true");
+    loading.textContent = "Fetching live data…";
+    return [loading];
+  }
+
   if (!quote) {
     const pending = document.createElement("span");
     pending.className = "quote-pending";
@@ -829,16 +845,20 @@ async function refreshQuotes(opts = {}) {
 
   if (!watchlist.length) {
     quoteCache = {};
+    quotesLoading = false;
     if (!quiet) {
       setStatus("Add a ticker before refreshing quotes.", "warn", "watchlist", "error");
     }
     return;
   }
 
+  quotesLoading = true;
   els.refreshQuotes.disabled = true;
-  if (!quiet) {
-    setStatus("Fetching live prices…", "info", "watchlist", "persistent");
-  }
+  els.refreshQuotes.classList.add("is-loading");
+  els.refreshQuotes.setAttribute("aria-busy", "true");
+  els.refreshQuotes.textContent = "Loading…";
+  renderWatchlist(watchlist, state.holdings, quoteCache);
+  setStatus("Fetching live prices & grades…", "info", "watchlist", "persistent");
 
   try {
     const data = await fetchWatchlistSnapshot(watchlist);
@@ -854,20 +874,23 @@ async function refreshQuotes(opts = {}) {
       `Updated ${n} quote${n === 1 ? "" : "s"}.`,
       "ok",
       "watchlist",
-      quiet ? "transient" : "transient"
+      "transient"
     );
   } catch (error) {
     console.error("[Stock Agent] quote refresh failed", error);
-    if (!quiet) {
-      setStatus(
-        error?.message || "Could not fetch live quotes.",
-        "error",
-        "watchlist",
-        "error"
-      );
-    }
+    setStatus(
+      error?.message || "Could not fetch live quotes.",
+      "error",
+      "watchlist",
+      "error"
+    );
   } finally {
+    quotesLoading = false;
     els.refreshQuotes.disabled = false;
+    els.refreshQuotes.classList.remove("is-loading");
+    els.refreshQuotes.removeAttribute("aria-busy");
+    els.refreshQuotes.textContent = "Refresh";
+    renderWatchlist(watchlist, state.holdings, quoteCache);
   }
 }
 
@@ -1293,6 +1316,14 @@ async function onSaveAndSubscribe() {
       message =
         `Saved & Subscribed (already sent for this time slot). ${scheduleLabel} → ${outbound.email}`;
     }
+
+    const sendStatus = String(response?.report_send_status || "not_due");
+    await setDeliveryStatusHint({
+      status: sendStatus,
+      at: new Date().toISOString(),
+      detail: message,
+    });
+    await refreshScheduleSummary();
 
     setStatus(message, "ok", "subscribe", "persistent");
   } catch (error) {
