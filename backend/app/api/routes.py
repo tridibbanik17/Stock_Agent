@@ -341,8 +341,14 @@ async def quotes_snapshot(
     logger.info("POST /api/quotes/snapshot count=%d", len(body.watchlist))
     try:
         metrics = analyze_watchlist(body.watchlist)
-        # Popup path skips slow GoogleNews; cron adds news flags later.
-        quotes = attach_grades(metrics)
+        news_by_ticker: dict[str, list] = {}
+        try:
+            from app.services.news import fetch_news_for_watchlist
+
+            news_by_ticker = fetch_news_for_watchlist(body.watchlist)
+        except Exception:
+            logger.exception("Snapshot news fetch failed; grading without headlines")
+        quotes = attach_grades(metrics, news_by_ticker)
         return {"quotes": quotes}
     except Exception as exc:
         logger.exception("Quote snapshot failed")

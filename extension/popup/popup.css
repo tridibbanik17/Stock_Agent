@@ -738,6 +738,26 @@ button.refresh-quotes.is-loading {
   color: var(--error);
 }
 
+.ai-blurb {
+  margin: 0;
+  padding: 4px 6px 2px;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: #9eb4c8;
+  font-family: var(--font);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.ai-blurb.is-loading {
+  color: #7eb7e8;
+  font-style: italic;
+}
+
+.ai-blurb.is-error {
+  color: #d4a0a0;
+  border-left-color: color-mix(in srgb, var(--error) 55%, transparent);
+}
+
 .quote-grade {
   font-weight: 700;
   letter-spacing: 0.02em;

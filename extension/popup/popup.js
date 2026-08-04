@@ -6,6 +6,7 @@
  */
 
 import { fetchWatchlistSnapshot, subscribeDelivery } from "../lib/api.js";
+import { explainQuoteGrade, generateGeminiText } from "../lib/gemini.js";
 import { suggestTickers } from "../lib/tickers.js";
 import {
   MAX_SEND_TIMES,
@@ -33,13 +34,6 @@ import {
   splitTimeParts,
   suggestNextSendTime,
 } from "../lib/storage.js";
-
-/** Prefer widely available free-tier models; try next on 404/429. */
-const GEMINI_MODELS = Object.freeze([
-  "gemini-2.0-flash",
-  "gemini-flash-latest",
-  "gemini-2.0-flash-lite",
-]);
 
 // ---------------------------------------------------------------------------
 // DOM references
@@ -79,10 +73,16 @@ const els = {
 };
 
 /** @type {Record<string, QuoteSnapshot>} */
-/** @type {Record<string, QuoteSnapshot>} */
 let quoteCache = {};
 /** True while /quotes/snapshot is in flight (show per-row loading UI). */
 let quotesLoading = false;
+/**
+ * Local Gemini blurbs keyed by ticker.
+ * @type {Record<string, { status: 'loading'|'ok'|'error', text: string }>}
+ */
+let aiExplainCache = {};
+/** Bumps when a new explain batch starts so stale responses are ignored. */
+let aiExplainGeneration = 0;
 
 /** Highlighted row index in ticker suggestions (-1 = none). */
 let suggestActiveIndex = -1;
@@ -95,6 +95,14 @@ let suggestActiveIndex = -1;
  *   grade?: string,
  *   verdict?: string,
  *   score?: number,
+ *   deRatio?: number|null,
+ *   pegRatio?: number|null,
+ *   rsi?: number|null,
+ *   aboveSma200?: boolean|null,
+ *   sma200?: number|null,
+ *   assetClass?: string,
+ *   notes?: string[],
+ *   newsRisks?: Array<string|{ title?: string, url?: string }>,
  *   error?: string|null,
  * }} QuoteSnapshot
  */
@@ -777,8 +785,62 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     meta.append(...buildQuoteMetaNodes(quote));
 
     li.append(row, meta);
+
+    const ai = buildAiBlurbNode(ticker, quote);
+    if (ai) li.appendChild(ai);
+
     els.watchlist.appendChild(li);
   }
+}
+
+/**
+ * @param {string} ticker
+ * @param {QuoteSnapshot | null} quote
+ * @returns {HTMLElement|null}
+ */
+function buildAiBlurbNode(ticker, quote) {
+  const entry = aiExplainCache[ticker];
+  if (!entry) return null;
+  if (!quote || (quote.error && quote.price == null)) return null;
+
+  const blurb = document.createElement("p");
+  blurb.className = "ai-blurb";
+  blurb.dataset.ticker = ticker;
+
+  if (entry.status === "loading") {
+    blurb.classList.add("is-loading");
+    blurb.setAttribute("aria-busy", "true");
+    blurb.textContent = "Gemini is explaining this grade…";
+    return blurb;
+  }
+  if (entry.status === "error") {
+    blurb.classList.add("is-error");
+    blurb.textContent = entry.text || "AI explanation unavailable.";
+    return blurb;
+  }
+
+  blurb.textContent = entry.text;
+  return blurb;
+}
+
+/**
+ * Patch one card's AI blurb without rebuilding holdings inputs.
+ * @param {string} ticker
+ */
+function patchAiBlurb(ticker) {
+  const card = els.watchlist.querySelector(
+    `.ticker-card[data-ticker="${CSS.escape(ticker)}"]`
+  );
+  if (!(card instanceof HTMLElement)) return;
+  const quote = quoteCache[ticker] || null;
+  const existing = card.querySelector(".ai-blurb");
+  const next = buildAiBlurbNode(ticker, quote);
+  if (!next) {
+    existing?.remove();
+    return;
+  }
+  if (existing) existing.replaceWith(next);
+  else card.appendChild(next);
 }
 
 /**
@@ -876,6 +938,7 @@ async function refreshQuotes(opts = {}) {
       "watchlist",
       "transient"
     );
+    void explainGradesAfterRefresh(watchlist, next);
   } catch (error) {
     console.error("[Stock Agent] quote refresh failed", error);
     setStatus(
@@ -891,6 +954,84 @@ async function refreshQuotes(opts = {}) {
     els.refreshQuotes.removeAttribute("aria-busy");
     els.refreshQuotes.textContent = "Refresh";
     renderWatchlist(watchlist, state.holdings, quoteCache);
+  }
+}
+
+/**
+ * After quotes land, ask local Gemini for a short "why this grade" blurb per ticker.
+ * @param {string[]} watchlist
+ * @param {Record<string, QuoteSnapshot>} quotes
+ */
+async function explainGradesAfterRefresh(watchlist, quotes) {
+  const key =
+    els.geminiKey.value.trim() || String((await getGeminiKey()) || "").trim();
+  if (!key) {
+    aiExplainCache = {};
+    return;
+  }
+  if (!els.autoAnalyze.checked) {
+    aiExplainCache = {};
+    return;
+  }
+
+  const generation = ++aiExplainGeneration;
+  /** @type {Record<string, { status: 'loading'|'ok'|'error', text: string }>} */
+  const nextCache = {};
+  for (const ticker of watchlist) {
+    const quote = quotes[ticker];
+    if (!quote || (quote.error && quote.price == null)) continue;
+    nextCache[ticker] = { status: "loading", text: "" };
+  }
+  aiExplainCache = nextCache;
+  renderWatchlist(watchlist, (await getLocalState()).holdings, quoteCache);
+
+  if (!Object.keys(nextCache).length) return;
+
+  setStatus("Gemini explaining grades…", "info", "ai", "persistent");
+
+  let okCount = 0;
+  let failCount = 0;
+  for (const ticker of Object.keys(nextCache)) {
+    if (generation !== aiExplainGeneration) return;
+    try {
+      const text = await explainQuoteGrade(key, /** @type {Record<string, unknown>} */ (quotes[ticker]));
+      if (generation !== aiExplainGeneration) return;
+      aiExplainCache[ticker] = { status: "ok", text };
+      okCount += 1;
+    } catch (error) {
+      console.warn("[AI explain] failed", ticker, error);
+      if (generation !== aiExplainGeneration) return;
+      aiExplainCache[ticker] = {
+        status: "error",
+        text: formatGeminiError(error),
+      };
+      failCount += 1;
+    }
+    patchAiBlurb(ticker);
+  }
+
+  if (generation !== aiExplainGeneration) return;
+  if (okCount && !failCount) {
+    setStatus(
+      `AI explained ${okCount} grade${okCount === 1 ? "" : "s"} locally.`,
+      "ok",
+      "ai",
+      "transient"
+    );
+  } else if (okCount && failCount) {
+    setStatus(
+      `AI explained ${okCount}; ${failCount} failed (quota or model).`,
+      "warn",
+      "ai",
+      "persistent"
+    );
+  } else if (failCount) {
+    setStatus(
+      formatGeminiError(new Error(aiExplainCache[Object.keys(aiExplainCache)[0]]?.text || "AI failed")),
+      "error",
+      "ai",
+      "error"
+    );
   }
 }
 
@@ -1018,6 +1159,7 @@ async function onRemoveTicker(ticker) {
   const watchlist = state.watchlist.filter((item) => item !== ticker);
   const result = await setWatchlist(watchlist);
   delete quoteCache[ticker];
+  delete aiExplainCache[ticker];
   renderWatchlist(result.watchlist, result.holdings, quoteCache);
   setStatus(`Removed ${ticker}.`, "ok", "watchlist", "transient");
 }
@@ -1098,12 +1240,18 @@ async function onAutoAnalyzeChange() {
   await setAutoAnalyze(els.autoAnalyze.checked);
   setStatus(
     els.autoAnalyze.checked
-      ? "Auto-analyze on — Gemini runs locally when the popup opens."
-      : "Auto-analyze off — quotes only, no AI.",
+      ? "Auto-explain on — Gemini will summarize grades after each refresh."
+      : "Auto-explain off — quotes only, no AI.",
     "ok",
     "ai",
     "persistent"
   );
+  if (!els.autoAnalyze.checked) {
+    aiExplainCache = {};
+    aiExplainGeneration += 1;
+    const state = await getLocalState();
+    renderWatchlist(state.watchlist, state.holdings, quoteCache);
+  }
 }
 
 /**
@@ -1138,55 +1286,11 @@ async function onTestAi() {
  * @returns {Promise<{ model: string, text: string }>}
  */
 async function pingGemini(key) {
-  let lastError = /** @type {Error|null} */ (null);
-
-  for (const model of GEMINI_MODELS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: "Reply with exactly: STOCK_AGENT_OK" }],
-            },
-          ],
-          generationConfig: { maxOutputTokens: 16, temperature: 0 },
-        }),
-      });
-
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const detail =
-          body?.error?.message || `HTTP ${response.status} from Gemini`;
-        const err = new Error(detail);
-        // @ts-expect-error attach status for formatter
-        err.status = response.status;
-        // Retry on model-not-found / quota for this model only.
-        if (response.status === 404 || response.status === 429) {
-          lastError = err;
-          continue;
-        }
-        throw err;
-      }
-
-      const text =
-        body?.candidates?.[0]?.content?.parts
-          ?.map((/** @type {{ text?: string }} */ part) => part.text || "")
-          .join("")
-          .trim() || "";
-      return { model, text };
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      if (/** @type {{ status?: number }} */ (lastError).status === 404) continue;
-      if (/** @type {{ status?: number }} */ (lastError).status === 429) continue;
-      throw lastError;
-    }
-  }
-
-  throw lastError || new Error("Gemini test failed");
+  return generateGeminiText(
+    key,
+    "Reply with exactly: STOCK_AGENT_OK",
+    { maxOutputTokens: 16, temperature: 0 }
+  );
 }
 
 /** @param {unknown} error @returns {string} */
@@ -1223,6 +1327,8 @@ async function onClearAllSettings() {
   els.toggleKey.setAttribute("aria-label", "Show Gemini API key");
   els.autoAnalyze.checked = true;
   quoteCache = {};
+  aiExplainCache = {};
+  aiExplainGeneration += 1;
   renderWatchlist([], {}, quoteCache);
   setStatus("All local settings cleared.", "ok", "global", "persistent");
 }
