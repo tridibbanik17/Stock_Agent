@@ -152,9 +152,12 @@ def _roe_trend(income_stmt: pd.DataFrame, balance_sheet: pd.DataFrame) -> list[s
 
 
 def _rsi(closes: pd.Series, window: int = 14) -> float | None:
-    if closes is None or len(closes) < window + 1:
+    if closes is None:
         return None
-    delta = closes.diff()
+    series = closes.dropna()
+    if len(series) < window + 1:
+        return None
+    delta = series.diff()
     gain = delta.clip(lower=0).rolling(window=window).mean()
     loss = (-delta.clip(upper=0)).rolling(window=window).mean()
     if loss.iloc[-1] == 0:
@@ -282,16 +285,54 @@ def _fast_last_price(stock: yf.Ticker) -> float | None:
 
 
 def _load_history(stock: yf.Ticker) -> pd.DataFrame:
-    """Try longer then shorter windows; empty frame on total failure."""
+    """
+    Try longer then shorter windows; empty frame on total failure.
+    Drop NaN closes — Yahoo often appends an empty/partial session row after hours,
+    which made last_close/SMA become NaN and incorrectly score aboveSma200=False.
+    """
     for period in ("2y", "1y", "6mo", "3mo", "1mo", "5d"):
         try:
             history = stock.history(period=period)
-            if history is not None and not history.empty:
-                return history
+            if history is None or history.empty or "Close" not in history.columns:
+                continue
+            cleaned = history.dropna(subset=["Close"])
+            if not cleaned.empty:
+                return cleaned
         except Exception:
             logger.debug("history(%s) failed for %s", period, getattr(stock, "ticker", "?"))
             continue
     return pd.DataFrame()
+
+
+def _trend_from_history(
+    history: pd.DataFrame,
+    price: float | None,
+) -> tuple[bool | None, float | None, int | None, float | None]:
+    """
+    Return (above_sma, sma_value, sma_window, rsi).
+    Uses last valid close; prefers live price for the above-SMA check when present.
+    """
+    if history is None or history.empty or "Close" not in history.columns:
+        return None, None, None, None
+
+    closes = history["Close"].dropna()
+    if closes.empty:
+        return None, None, None, None
+
+    last_close = float(closes.iloc[-1])
+    compare_price = float(price) if isinstance(price, (int, float)) else last_close
+    rsi = _rsi(closes)
+
+    if len(closes) < 50:
+        return None, None, None, rsi
+
+    window = 200 if len(closes) >= 200 else len(closes)
+    sma = float(closes.rolling(window=window).mean().iloc[-1])
+    if pd.isna(sma):
+        return None, None, None, rsi
+
+    sma_rounded = round(sma, 2)
+    return compare_price > sma, sma_rounded, window, rsi
 
 
 def _safe_info(stock: yf.Ticker) -> dict[str, Any]:
@@ -317,10 +358,8 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
         price = _fast_last_price(stock)
         if price is not None:
             price = round(price, 2)
-        if history is not None and not history.empty:
-            last_close = float(history["Close"].iloc[-1])
-            if price is None:
-                price = round(last_close, 2)
+        if history is not None and not history.empty and price is None:
+            price = round(float(history["Close"].iloc[-1]), 2)
 
         info = _safe_info(stock)
         if price is None:
@@ -372,23 +411,7 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
 
         roe_list = _roe_trend(income_stmt, balance_sheet)
 
-        above_sma: bool | None = None
-        sma_200: float | None = None
-        sma_window: int | None = None
-        rsi: float | None = None
-        if history is not None and not history.empty:
-            last_close = float(history["Close"].iloc[-1])
-            if price is None:
-                price = round(last_close, 2)
-            rsi = _rsi(history["Close"])
-            if len(history) >= 50:
-                window = 200 if len(history) >= 200 else len(history)
-                sma_window = window
-                sma_200 = round(
-                    float(history["Close"].rolling(window=window).mean().iloc[-1]),
-                    2,
-                )
-                above_sma = last_close > sma_200
+        above_sma, sma_200, sma_window, rsi = _trend_from_history(history, price)
 
         return {
             "ticker": symbol,
