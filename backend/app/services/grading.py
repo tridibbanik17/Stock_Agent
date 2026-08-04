@@ -4,6 +4,43 @@ from __future__ import annotations
 
 from typing import Any
 
+# Headlines that justify a score penalty (lawsuits, probes, misses, etc.).
+_RISKY_NEWS_KEYS = (
+    "lawsuit",
+    "sued",
+    "suing",
+    "sec ",
+    "fraud",
+    "investigation",
+    "investigat",
+    "probe",
+    "bankrupt",
+    "downgrade",
+    "misses",
+    "missed earnings",
+    "earnings miss",
+    "recall",
+    "layoff",
+    "layoffs",
+    "subpoena",
+    "indict",
+    "default",
+    "delist",
+    "trading halt",
+    "smuggl",
+    "antitrust",
+    "fine ",
+    "fined",
+    "penalty",
+    "scandal",
+    "cut guidance",
+    "warning letter",
+    "class action",
+    "whistleblower",
+    "accounting irregular",
+    "restat",
+)
+
 
 def _parse_roe_pct(roe_list: list[str]) -> list[float]:
     values: list[float] = []
@@ -37,6 +74,11 @@ def _normalize_news_items(
     return out
 
 
+def _is_risky_headline(title: str) -> bool:
+    text = f" {str(title or '').lower()} "
+    return any(key in text for key in _RISKY_NEWS_KEYS)
+
+
 def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) -> dict[str, Any]:
     """
     Score 0–5 with asset-class weighting.
@@ -47,11 +89,13 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
     peg_ratio = metrics.get("pegRatio")
     above_sma = metrics.get("aboveSma200")
     rsi = metrics.get("rsi")
+    sma_window = metrics.get("smaWindow")
     roes = _parse_roe_pct(metrics.get("roeTrend") or [])
     news_items = _normalize_news_items(news_flags)
 
     score = 0
     notes: list[str] = []
+    missing_data: list[str] = []
 
     # --- Debt-to-Equity ---
     if isinstance(de_ratio, (int, float)):
@@ -72,6 +116,8 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
                 score += 1
             else:
                 notes.append("High debt burden limits financial flexibility.")
+    else:
+        missing_data.append("D/E")
 
     # --- PEG ---
     if isinstance(peg_ratio, (int, float)):
@@ -89,23 +135,48 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
                 score += 1
             elif peg_ratio > 2.0:
                 notes.append("The stock is expensive relative to expected growth (PEG).")
+    else:
+        missing_data.append("PEG")
 
     # --- ROE trend ---
     if asset == "crypto_proxy":
         notes.append("ROE is a weak signal for crypto-proxy / treasury strategies - discounted.")
         if roes and roes[0] > 10:
             score += 1
+        elif not roes:
+            missing_data.append("ROE")
     else:
-        if roes and roes[0] > 15:
-            score += 1
-        if len(roes) >= 2 and roes[0] < roes[1]:
-            notes.append("Warning: Profit efficiency (ROE) is trending downward.")
+        if roes:
+            if roes[0] > 15:
+                score += 1
+            if roes[0] < 0:
+                notes.append("Company is posting negative ROE (net losses).")
+            elif len(roes) >= 2 and roes[0] < roes[1]:
+                notes.append("Warning: Profit efficiency (ROE) is trending downward.")
+        else:
+            missing_data.append("ROE")
 
-    # --- 200-day SMA ---
+    # --- 200-day SMA (or shorter window for new listings / CDRs) ---
+    try:
+        window = int(sma_window) if sma_window is not None else 200
+    except (TypeError, ValueError):
+        window = 200
+    sma_label = "200-day SMA" if window >= 200 else f"{window}-day SMA"
+
     if above_sma is True:
         score += 1
+        if window < 200:
+            notes.append(
+                f"Trend uses a {window}-day SMA (listing history under 200 sessions)."
+            )
     elif above_sma is False:
-        notes.append("Price is below the 200-day SMA (macro downtrend).")
+        notes.append(f"Price is below the {sma_label} (macro downtrend).")
+        if window < 200:
+            notes.append(
+                f"Trend uses a {window}-day SMA (listing history under 200 sessions)."
+            )
+    else:
+        missing_data.append("200-SMA")
 
     # --- RSI ---
     if isinstance(rsi, (int, float)):
@@ -113,13 +184,26 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
             score += 1
             notes.append("RSI shows selling fatigue - possible mean-reversion zone.")
         elif rsi > 70:
-            notes.append("RSI is overbought - avoid chasing; consider trimming.")
+            score = max(0, score - 1)
+            notes.append("RSI is overbought (>70) - avoid chasing; risk of pullbacks.")
+    else:
+        missing_data.append("RSI")
 
-    # --- Qualitative news risk (existential headlines) ---
-    if news_items:
-        score = max(0, score - 2)
-        for item in news_items[:3]:
+    # --- News: only penalize clearly risky headlines ---
+    risky_news = [item for item in news_items if _is_risky_headline(item.get("title", ""))]
+    if risky_news:
+        # Cap at -2 so one probe does not erase an otherwise strong card.
+        penalty = min(2, len(risky_news))
+        score = max(0, score - penalty)
+        for item in risky_news[:3]:
             notes.append(f"News risk: {item['title']}")
+    elif news_items:
+        # Neutral / positive headlines stay visible but do not destroy the score.
+        for item in news_items[:2]:
+            notes.append(f"Headline: {item['title']}")
+
+    if missing_data:
+        notes.append(f"Missing data: {', '.join(missing_data)}.")
 
     if score >= 4:
         grade = "STRONG_BUY"
@@ -141,7 +225,7 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         "verdict": verdict,
         "notes": notes,
         "assetClass": asset,
-        "newsRisks": news_items[:3],
+        "newsRisks": (risky_news or news_items)[:3],
     }
 
 

@@ -60,6 +60,9 @@ def _note_lines_for_email(q: dict[str, Any]) -> list[tuple[str, str | None]]:
         if text.startswith("News risk: "):
             headline = text[len("News risk: ") :].strip()
             link = url_by_title.get(headline)
+        elif text.startswith("Headline: "):
+            headline = text[len("Headline: ") :].strip()
+            link = url_by_title.get(headline)
         out.append((text, link))
     return out
 
@@ -72,13 +75,14 @@ def build_unsubscribe_url(token: str, base_url: str | None = None) -> str:
 
 
 def _metric_glossary() -> list[str]:
-    """Short plain-language footer — keep email scannable (no Gemini on this path)."""
+    """Short plain-language footer — keep email scannable."""
     return [
         "METRIC GUIDE",
         "-" * 46,
         "Grade 4-5 = STRONG BUY, 3 = HOLD, 0-2 = AVOID.",
         "D/E = debt vs equity. PEG = valuation vs growth.",
         "RSI = momentum (0-100). 200-SMA = long-term trend.",
+        "Grades use rules plus headline risk flags only.",
         "Privacy: tickers only - never share counts or buy prices.",
         "Not investment advice; do your own research.",
     ]
@@ -103,13 +107,14 @@ def format_report_text(
         lines.append(f"* {ticker}")
         lines.append(f"  - Price: {price_s}")
         lines.append(f"  - Grade: {q.get('verdict') or q.get('grade') or 'n/a'}")
-        lines.append(f"  - Debt-to-Equity: {q.get('deRatio', 'N/A')}")
-        lines.append(f"  - PEG: {q.get('pegRatio', 'N/A')}")
+        lines.append(f"  - Debt-to-Equity: {q.get('deRatio') if q.get('deRatio') is not None else 'n/a'}")
+        lines.append(f"  - PEG: {q.get('pegRatio') if q.get('pegRatio') is not None else 'n/a'}")
         lines.append(f"  - ROE trend: {q.get('roeTrend', [])}")
         lines.append(
-            f"  - Above 200-SMA: {q.get('aboveSma200')} (SMA: {q.get('sma200', 'N/A')})"
+            f"  - Above 200-SMA: {q.get('aboveSma200') if q.get('aboveSma200') is not None else 'n/a'} "
+            f"(SMA: {q.get('sma200') if q.get('sma200') is not None else 'n/a'})"
         )
-        lines.append(f"  - RSI: {q.get('rsi', 'N/A')}")
+        lines.append(f"  - RSI: {q.get('rsi') if q.get('rsi') is not None else 'n/a'}")
         lines.append(f"  - Asset class: {q.get('assetClass', 'standard')}")
         notes = q.get("notes") or []
         if notes:
@@ -180,9 +185,9 @@ def diff_grades(
 
 
 def _esc(value: object) -> str:
+    text = "n/a" if value is None or value == "" else str(value)
     return (
-        str(value if value is not None else "")
-        .replace("&", "&amp;")
+        text.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
@@ -319,7 +324,7 @@ def format_report_html(
         <p style="margin:0;font-size:12px;color:#64748b;line-height:1.55;">
           Grade 4–5 = STRONG BUY, 3 = HOLD, 0–2 = AVOID.
           D/E = debt vs equity. PEG = valuation vs growth. RSI = momentum (0–100).
-          200-SMA = long-term trend. Grades use rules + headlines — not Gemini.
+          200-SMA = long-term trend. Grades use rules plus headline risk flags only.
           Not investment advice.
         </p>
         """

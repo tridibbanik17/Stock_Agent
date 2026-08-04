@@ -151,6 +151,8 @@ def _roe_trend(income_stmt: pd.DataFrame, balance_sheet: pd.DataFrame) -> list[s
 
 
 def _rsi(closes: pd.Series, window: int = 14) -> float | None:
+    if closes is None or len(closes) < window + 1:
+        return None
     delta = closes.diff()
     gain = delta.clip(lower=0).rolling(window=window).mean()
     loss = (-delta.clip(upper=0)).rolling(window=window).mean()
@@ -159,6 +161,102 @@ def _rsi(closes: pd.Series, window: int = 14) -> float | None:
     rs = gain / loss
     value = 100 - (100 / (1 + rs.iloc[-1]))
     return None if pd.isna(value) else round(float(value), 1)
+
+
+def _name_tokens(text: str) -> set[str]:
+    stop = {
+        "inc",
+        "corp",
+        "corporation",
+        "ltd",
+        "limited",
+        "plc",
+        "the",
+        "and",
+        "cdr",
+        "cad",
+        "hedged",
+        "class",
+        "common",
+        "stock",
+        "shares",
+    }
+    tokens: set[str] = set()
+    for raw in str(text or "").lower().replace(",", " ").replace(".", " ").split():
+        token = raw.strip()
+        if len(token) >= 4 and token not in stop:
+            tokens.add(token)
+    return tokens
+
+
+def _canadian_us_peer_symbol(symbol: str) -> str | None:
+    """SMCI.TO → SMCI for CDRs / dual-listed Canadian wrappers."""
+    sym = (symbol or "").strip().upper()
+    for suffix in (".TO", ".V", ".CN"):
+        if sym.endswith(suffix) and len(sym) > len(suffix) + 1:
+            return sym[: -len(suffix)]
+    return None
+
+
+def _looks_like_same_issuer(local_info: dict[str, Any], peer_info: dict[str, Any]) -> bool:
+    local_blob = " ".join(
+        str(local_info.get(k) or "")
+        for k in ("shortName", "longName", "displayName")
+    )
+    peer_blob = " ".join(
+        str(peer_info.get(k) or "")
+        for k in ("shortName", "longName", "displayName")
+    )
+    if "cdr" in local_blob.lower():
+        return True
+    local_tokens = _name_tokens(local_blob)
+    peer_tokens = _name_tokens(peer_blob)
+    return bool(local_tokens and peer_tokens and (local_tokens & peer_tokens))
+
+
+def _derive_peg(info: dict[str, Any] | None) -> float | None:
+    """Prefer Yahoo pegRatio; else approximate from forward/trailing PE ÷ growth %."""
+    info = info or {}
+    peg = _safe_float(info.get("pegRatio") or info.get("trailingPegRatio"))
+    if peg is not None:
+        return peg
+
+    pe = _safe_float(info.get("forwardPE")) or _safe_float(info.get("trailingPE"))
+    growth = _safe_float(info.get("earningsGrowth"))
+    if pe is None or growth is None or growth <= 0:
+        return None
+    # yfinance growth is usually a decimal (0.15 = 15%); sometimes already percent-like.
+    growth_pct = growth * 100.0 if abs(growth) <= 1.0 else growth
+    if growth_pct <= 0:
+        return None
+    return round(float(pe) / growth_pct, 2)
+
+
+def _peer_fundamentals(symbol: str, local_info: dict[str, Any]) -> dict[str, Any]:
+    """
+    For thin Canadian listings / CDRs, pull PEG + sector metadata from the US peer
+    when issuer names match (never replaces local CAD price/history).
+    """
+    peer_symbol = _canadian_us_peer_symbol(symbol)
+    if not peer_symbol:
+        return {}
+    try:
+        peer_info = yf.Ticker(peer_symbol).info or {}
+    except Exception:
+        logger.exception("US peer lookup failed for %s → %s", symbol, peer_symbol)
+        return {}
+    if not _looks_like_same_issuer(local_info, peer_info):
+        return {}
+
+    out: dict[str, Any] = {"peerSymbol": peer_symbol}
+    peg = _derive_peg(peer_info)
+    if peg is not None:
+        out["pegRatio"] = peg
+    if peer_info.get("sector") and not local_info.get("sector"):
+        out["sector"] = peer_info.get("sector")
+    if peer_info.get("industry") and not local_info.get("industry"):
+        out["industry"] = peer_info.get("industry")
+    return out
 
 
 def analyze_ticker(ticker: str) -> dict[str, Any]:
@@ -170,10 +268,18 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
     try:
         stock = yf.Ticker(symbol)
         info = stock.info or {}
-        asset_class = classify_asset_from_info(info, symbol)
         price = _safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
         currency = resolve_currency(symbol, info)
-        peg = _safe_float(info.get("pegRatio"))
+        peg = _derive_peg(info)
+
+        peer = _peer_fundamentals(symbol, info)
+        if peg is None and peer.get("pegRatio") is not None:
+            peg = peer["pegRatio"]
+        # Prefer local sector/industry; fill gaps from matched US peer (CDRs often blank).
+        sector = info.get("sector") or peer.get("sector")
+        industry = info.get("industry") or peer.get("industry")
+        enriched_info = {**info, "sector": sector, "industry": industry}
+        asset_class = classify_asset_from_info(enriched_info, symbol)
 
         try:
             balance_sheet = stock.balance_sheet
@@ -204,19 +310,27 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
 
         roe_list = _roe_trend(income_stmt, balance_sheet)
 
-        history = stock.history(period="1y")
+        # Prefer 2y so newer listings / CDRs still get as much history as Yahoo has.
+        history = stock.history(period="2y")
         above_sma: bool | None = None
         sma_200: float | None = None
+        sma_window: int | None = None
         rsi: float | None = None
-        if history is not None and len(history) >= 200:
+        if history is not None and not history.empty:
             last_close = float(history["Close"].iloc[-1])
             if price is None:
                 price = round(last_close, 2)
-            sma_200 = round(float(history["Close"].rolling(window=200).mean().iloc[-1]), 2)
-            above_sma = last_close > sma_200
+            # RSI only needs ~15 bars; do not wait for a full 200-day window.
             rsi = _rsi(history["Close"])
-        elif history is not None and not history.empty and price is None:
-            price = round(float(history["Close"].iloc[-1]), 2)
+            # True 200-SMA when possible; otherwise use all available sessions (≥50).
+            if len(history) >= 50:
+                window = 200 if len(history) >= 200 else len(history)
+                sma_window = window
+                sma_200 = round(
+                    float(history["Close"].rolling(window=window).mean().iloc[-1]),
+                    2,
+                )
+                above_sma = last_close > sma_200
 
         return {
             "ticker": symbol,
@@ -227,10 +341,12 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             "roeTrend": roe_list,
             "aboveSma200": above_sma,
             "sma200": sma_200,
+            "smaWindow": sma_window,
             "rsi": rsi,
             "assetClass": asset_class,
-            "sector": info.get("sector"),
-            "industry": info.get("industry"),
+            "sector": sector,
+            "industry": industry,
+            "peerSymbol": peer.get("peerSymbol"),
             "asOf": as_of,
             "error": None if price is not None else "price_unavailable",
         }
@@ -245,10 +361,12 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             "roeTrend": ["N/A", "N/A", "N/A"],
             "aboveSma200": None,
             "sma200": None,
+            "smaWindow": None,
             "rsi": None,
             "assetClass": asset_class,
             "sector": None,
             "industry": None,
+            "peerSymbol": None,
             "asOf": as_of,
             "error": str(exc),
         }
