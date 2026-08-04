@@ -407,7 +407,7 @@ export function suggestNextSendTime(existing) {
 const DEFAULTS = Object.freeze({
   holdings: {},
   geminiApiKey: "",
-  autoAnalyze: true,
+  autoAnalyze: false,
   watchlist: [],
   delivery: Object.freeze({
     email: "",

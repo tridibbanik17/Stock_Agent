@@ -120,20 +120,99 @@ export function buildGradeExplainPrompt(quote) {
 }
 
 /**
+ * Build one Gemini prompt for the whole watchlist (single free-tier request).
+ * Expect JSON: { "TICKER": "one sentence", ... }
+ * @param {Array<Record<string, unknown>>} quotes
+ * @returns {string}
+ */
+export function buildBatchGradeExplainPrompt(quotes) {
+  const rows = (quotes || []).map((quote) => {
+    const notes = Array.isArray(quote.notes)
+      ? quote.notes.map((n) => String(n)).slice(0, 4)
+      : [];
+    const risks = Array.isArray(quote.newsRisks)
+      ? quote.newsRisks
+          .map((item) =>
+            typeof item === "string"
+              ? item
+              : String(item?.title || item?.headline || "")
+          )
+          .filter(Boolean)
+          .slice(0, 3)
+      : [];
+    return {
+      ticker: String(quote.ticker || "?"),
+      verdict: String(quote.verdict || quote.grade || "n/a"),
+      price: quote.price ?? null,
+      currency: quote.currency || null,
+      deRatio: quote.deRatio ?? null,
+      pegRatio: quote.pegRatio ?? null,
+      rsi: quote.rsi ?? null,
+      aboveSma200: quote.aboveSma200 ?? null,
+      assetClass: quote.assetClass || null,
+      notes,
+      headlines: risks,
+    };
+  });
+
+  return [
+    "You are a concise equity desk assistant for retail swing traders.",
+    "For EACH ticker, write one short sentence explaining the rule-based grade.",
+    "Use only the data given. Do not invent facts.",
+    "Do not give personalized financial advice.",
+    'Respond with ONLY a JSON object mapping ticker -> explanation string.',
+    'Example: {"AMZN":"HOLD because …","TSLA":"AVOID because …"}',
+    "",
+    `Watchlist JSON: ${JSON.stringify(rows)}`,
+  ].join("\n");
+}
+
+/**
+ * @param {string} key
+ * @param {Array<Record<string, unknown>>} quotes
+ * @returns {Promise<Record<string, string>>}
+ */
+export async function explainQuotesBatch(key, quotes) {
+  const { text } = await generateGeminiText(
+    key,
+    buildBatchGradeExplainPrompt(quotes),
+    { maxOutputTokens: 500, temperature: 0.2 }
+  );
+  const cleaned = String(text || "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) {
+    throw new Error("Gemini did not return JSON explanations");
+  }
+  const parsed = JSON.parse(cleaned.slice(start, end + 1));
+  /** @type {Record<string, string>} */
+  const out = {};
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Invalid Gemini JSON");
+  }
+  for (const [rawTicker, value] of Object.entries(parsed)) {
+    const ticker = String(rawTicker || "").trim().toUpperCase();
+    const blurb = String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!ticker || !blurb) continue;
+    out[ticker] = blurb.length > 280 ? `${blurb.slice(0, 277)}…` : blurb;
+  }
+  if (!Object.keys(out).length) {
+    throw new Error("Empty Gemini explanations");
+  }
+  return out;
+}
+
+/**
  * @param {string} key
  * @param {Record<string, unknown>} quote
  * @returns {Promise<string>}
  */
 export async function explainQuoteGrade(key, quote) {
-  const { text } = await generateGeminiText(
-    key,
-    buildGradeExplainPrompt(quote),
-    { maxOutputTokens: 110, temperature: 0.25 }
-  );
-  const cleaned = String(text || "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!cleaned) throw new Error("Empty Gemini explanation");
-  // Keep popup scannable.
-  return cleaned.length > 280 ? `${cleaned.slice(0, 277)}…` : cleaned;
+  const map = await explainQuotesBatch(key, [quote]);
+  const ticker = String(quote.ticker || "").toUpperCase();
+  const text = map[ticker];
+  if (!text) throw new Error("Empty Gemini explanation");
+  return text;
 }

@@ -15,7 +15,7 @@ Extension → FastAPI → yfinance → grading rules → popup / email (Resend)
 - **Cron shared quote cache:** each tick unions matched users’ tickers, fetches/grades each symbol once, then reuses those quotes for every email (avoids N× yfinance hits when watchlists overlap).
 - **Cron fan-out:** matched users are emailed in parallel (`CRON_DISPATCH_WORKERS`, default 8) so one slow Resend call does not block the rest of the tick. News uses Yahoo RSS (CI-safe) with a short disk cache; set `STOCK_AGENT_SKIP_NEWS=1` to disable.
 - **Unsubscribe:** report emails include `GET /api/unsubscribe?token=…` (also `POST` / `DELETE`). That flips `enabled=false` without the extension.
-- **Gemini** is optional BYOK in the Chrome extension only. After quote refresh (when Auto-explain is on), the popup calls Google from the device with ticker metrics + notes + headlines and shows a short “why this grade” blurb under each row. Gemini is **not** used for the numeric grade, server cron, or scheduled email.
+- **Gemini** is optional BYOK in the Chrome extension only. Quote refresh does **not** call Gemini. An optional **Explain grades** button can send one batched prompt (metrics + notes + headlines) from the device to Google. Numeric grades, cron, and email stay rules-only.
 
 ## Tags / fields and where they come from
 

@@ -235,18 +235,24 @@
           </p>
         </div>
 
-        <label class="ai-toggle" for="auto-analyze">
-          <input id="auto-analyze" type="checkbox" checked />
+        <label class="ai-toggle" for="auto-analyze" hidden>
+          <input id="auto-analyze" type="checkbox" />
           <span class="ai-toggle-copy">
-            <span class="ai-toggle-title">Auto-explain grades with Gemini</span>
-            <span class="ai-toggle-desc">
-              After each quote refresh, Gemini writes a short “why this grade”
-              under every ticker. Key stays on this device. Turn off for quotes only.
-            </span>
+            <span class="ai-toggle-title">Legacy auto-explain</span>
+            <span class="ai-toggle-desc">Unused — prefer Explain grades (1 call).</span>
           </span>
         </label>
 
-        <button type="button" id="test-ai" class="test-ai-btn">Test AI</button>
+        <div class="ai-actions">
+          <button type="button" id="test-ai" class="test-ai-btn">Test AI</button>
+          <button type="button" id="explain-grades" class="ghost explain-grades-btn">
+            Explain grades
+          </button>
+        </div>
+        <p class="ai-footnote ai-explain-hint">
+          Explain grades uses <strong>one</strong> Gemini request for the whole
+          watchlist (optional). Free-tier keys hit limits if you spam this.
+        </p>
         <p
           id="status-ai"
           class="status status-inline"
