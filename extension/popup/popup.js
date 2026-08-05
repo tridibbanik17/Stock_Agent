@@ -1187,6 +1187,14 @@ function formatPrice(value) {
   });
 }
 
+/** Money totals / P&L — always 2 decimal places. */
+function formatMoney(value) {
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 /**
  * True when a quote has enough trend data that the grade won't jump later.
  * @param {QuoteSnapshot|null|undefined} quote
