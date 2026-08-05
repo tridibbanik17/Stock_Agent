@@ -173,7 +173,7 @@
           <div>
             <h2 id="ai-heading">AI analysis</h2>
             <p class="ai-sub">
-              Free Gemini · math + news context on your device
+              Optional · explains grades on this device with your Gemini key
             </p>
           </div>
           <a
@@ -203,7 +203,6 @@
               aria-label="Show Gemini API key"
               title="Show / hide key"
             >
-              <!-- One icon visible at a time via CSS (aria-pressed). -->
               <svg
                 class="eye-icon eye-show"
                 viewBox="0 0 24 24"
@@ -231,28 +230,16 @@
             </button>
           </div>
           <p class="ai-footnote">
-            Stored locally. Free Gemini Flash models · key never leaves this device.
+            Key stays on this device. Grades still come from rules, not AI.
           </p>
         </div>
 
-        <label class="ai-toggle" for="auto-analyze" hidden>
-          <input id="auto-analyze" type="checkbox" />
-          <span class="ai-toggle-copy">
-            <span class="ai-toggle-title">Legacy auto-explain</span>
-            <span class="ai-toggle-desc">Unused — prefer Explain grades (1 call).</span>
-          </span>
-        </label>
-
-        <div class="ai-actions">
-          <button type="button" id="test-ai" class="test-ai-btn">Test AI</button>
-          <button type="button" id="explain-grades" class="ghost explain-grades-btn">
-            Explain grades
-          </button>
-        </div>
-        <p class="ai-footnote ai-explain-hint">
-          Explain grades uses <strong>one</strong> Gemini request for the whole
-          watchlist (optional). Free-tier keys hit limits if you spam this.
-        </p>
+        <button type="button" id="explain-grades" class="primary explain-grades-btn">
+          Explain grades
+        </button>
+        <button type="button" id="test-ai" class="ghost test-ai-btn">
+          Test API key
+        </button>
         <p
           id="status-ai"
           class="status status-inline"

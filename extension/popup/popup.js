@@ -25,9 +25,9 @@ import {
   getLocalState,
   joinTimeParts,
   normalizeSchedule,
-  setAutoAnalyze,
   setDelivery,
   setDeliveryStatusHint,
+  expireDeliveryStatusHint,
   setGeminiKey,
   setHoldings,
   setWatchlist,
@@ -60,7 +60,6 @@ const els = {
   subscribe: /** @type {HTMLButtonElement} */ ($("subscribe-btn")),
   geminiKey: /** @type {HTMLInputElement} */ ($("gemini-key")),
   toggleKey: /** @type {HTMLButtonElement} */ ($("toggle-key")),
-  autoAnalyze: /** @type {HTMLInputElement} */ ($("auto-analyze")),
   testAi: /** @type {HTMLButtonElement} */ ($("test-ai")),
   explainGrades: /** @type {HTMLButtonElement} */ ($("explain-grades")),
   clearSettings: /** @type {HTMLButtonElement} */ ($("clear-settings")),
@@ -258,10 +257,6 @@ function bindEvents() {
     void persistGeminiKeyQuiet();
   });
 
-  els.autoAnalyze.addEventListener("change", () => {
-    void onAutoAnalyzeChange();
-  });
-
   els.testAi.addEventListener("click", () => {
     void onTestAi();
   });
@@ -436,7 +431,6 @@ async function hydrateFromStorage() {
   els.email.value = state.delivery.email || "";
   applyScheduleToDom(normalizeSchedule(state.delivery.schedule));
   els.geminiKey.value = state.geminiApiKey || (await getGeminiKey());
-  els.autoAnalyze.checked = false;
 
   renderWatchlist(state.watchlist, state.holdings, quoteCache);
 }
@@ -547,7 +541,7 @@ function renderTimeRows(times) {
 async function refreshScheduleSummary() {
   const schedule = readScheduleFromDom();
   els.scheduleSummary.textContent = formatScheduleLabel(schedule);
-  const hint = await getDeliveryStatusHint();
+  const hint = await expireDeliveryStatusHint(await getDeliveryStatusHint());
   els.scheduleNext.textContent = formatDeliveryStatusLine(schedule, hint);
   els.scheduleNext.title = formatNextEmailLabel(schedule);
 }
@@ -927,6 +921,10 @@ async function refreshQuotes(opts = {}) {
 
   quotesLoading = true;
   quotesPending = new Set(watchlist);
+  // Grades may change on refresh — clear AI blurbs so Explain runs fresh.
+  aiExplainCache = {};
+  aiExplainGeneration += 1;
+  updateExplainButtonLabel(0);
   els.refreshQuotes.disabled = true;
   els.refreshQuotes.classList.add("is-loading");
   els.refreshQuotes.setAttribute("aria-busy", "true");
@@ -993,7 +991,7 @@ async function refreshQuotes(opts = {}) {
 }
 
 /**
- * Optional: one Gemini call for the whole watchlist (avoids free-tier N× spam).
+ * Optional: explain only tickers that still need a blurb (keeps successes on retry).
  */
 async function onExplainGrades() {
   const key =
@@ -1014,48 +1012,115 @@ async function onExplainGrades() {
     return;
   }
 
-  const generation = ++aiExplainGeneration;
+  /** @type {Array<Record<string, unknown>>} */
+  const pending = [];
   /** @type {Record<string, { status: 'loading'|'ok'|'error', text: string }>} */
   const nextCache = {};
   for (const q of quotes) {
-    nextCache[q.ticker] = { status: "loading", text: "" };
-  }
-  aiExplainCache = nextCache;
-  renderWatchlist(watchlist, state.holdings, quoteCache);
-
-  els.explainGrades.disabled = true;
-  setStatus("Gemini explaining grades (1 request)…", "info", "ai", "persistent");
-
-  try {
-    const map = await explainQuotesBatch(
-      key,
-      quotes.map((q) => /** @type {Record<string, unknown>} */ (q))
-    );
-    if (generation !== aiExplainGeneration) return;
-    for (const ticker of Object.keys(nextCache)) {
-      const text = map[ticker];
-      aiExplainCache[ticker] = text
-        ? { status: "ok", text }
-        : { status: "error", text: "No explanation returned for this ticker." };
-      patchAiBlurb(ticker);
+    const ticker = q.ticker;
+    const prev = aiExplainCache[ticker];
+    if (prev?.status === "ok" && prev.text) {
+      nextCache[ticker] = prev;
+    } else {
+      pending.push(/** @type {Record<string, unknown>} */ (q));
+      nextCache[ticker] = { status: "loading", text: "" };
     }
+  }
+
+  const alreadyOk = quotes.length - pending.length;
+  if (!pending.length) {
     setStatus(
-      `AI explained ${Object.keys(map).length} grade${Object.keys(map).length === 1 ? "" : "s"} (1 Gemini call).`,
+      `All ${quotes.length} grades already explained. Refresh quotes to clear.`,
       "ok",
       "ai",
       "transient"
     );
+    updateExplainButtonLabel(0);
+    return;
+  }
+
+  const generation = ++aiExplainGeneration;
+  aiExplainCache = nextCache;
+  renderWatchlist(watchlist, state.holdings, quoteCache);
+  updateExplainButtonLabel(pending.length);
+
+  els.explainGrades.disabled = true;
+  setStatus(
+    alreadyOk
+      ? `Explaining ${pending.length} remaining grade${pending.length === 1 ? "" : "s"}…`
+      : `Gemini explaining ${pending.length} grade${pending.length === 1 ? "" : "s"}…`,
+    "info",
+    "ai",
+    "persistent"
+  );
+
+  try {
+    const { map, calls } = await explainQuotesBatch(key, pending);
+    if (generation !== aiExplainGeneration) return;
+
+    for (const q of pending) {
+      const ticker = String(q.ticker || "");
+      const text = map[ticker] || map[ticker.toUpperCase()];
+      aiExplainCache[ticker] = text
+        ? { status: "ok", text }
+        : {
+            status: "error",
+            text: "No explanation returned for this ticker.",
+          };
+      patchAiBlurb(ticker);
+    }
+
+    const okCount = Object.values(aiExplainCache).filter(
+      (e) => e?.status === "ok"
+    ).length;
+    const total = quotes.length;
+    const stillMissing = total - okCount;
+    const callLabel = `${calls} Gemini call${calls === 1 ? "" : "s"}`;
+    updateExplainButtonLabel(stillMissing);
+
+    if (stillMissing === 0) {
+      setStatus(
+        `AI explained ${okCount} grade${okCount === 1 ? "" : "s"} (${callLabel}).`,
+        "ok",
+        "ai",
+        "transient"
+      );
+    } else {
+      setStatus(
+        `AI explained ${okCount}/${total} grades (${callLabel}). Press again for the ${stillMissing} left.`,
+        "warn",
+        "ai",
+        "error"
+      );
+    }
   } catch (error) {
     console.error("[AI explain batch] failed", error);
     if (generation !== aiExplainGeneration) return;
     const msg = formatGeminiError(error);
-    for (const ticker of Object.keys(nextCache)) {
+    // Keep already-ok blurbs; only mark the ones we tried this pass.
+    for (const q of pending) {
+      const ticker = String(q.ticker || "");
       aiExplainCache[ticker] = { status: "error", text: msg };
       patchAiBlurb(ticker);
     }
+    updateExplainButtonLabel(pending.length);
     setStatus(msg, "error", "ai", "error");
   } finally {
     els.explainGrades.disabled = false;
+  }
+}
+
+/** @param {number} missingCount */
+function updateExplainButtonLabel(missingCount) {
+  if (missingCount > 0 && missingCount < 99) {
+    const allMissing =
+      Object.keys(aiExplainCache).length === 0 ||
+      Object.values(aiExplainCache).every((e) => e?.status !== "ok");
+    els.explainGrades.textContent = allMissing
+      ? "Explain grades"
+      : `Explain remaining (${missingCount})`;
+  } else {
+    els.explainGrades.textContent = "Explain grades";
   }
 }
 
@@ -1260,24 +1325,6 @@ async function persistGeminiKeyQuiet() {
   }
 }
 
-async function onAutoAnalyzeChange() {
-  await setAutoAnalyze(els.autoAnalyze.checked);
-  setStatus(
-    els.autoAnalyze.checked
-      ? "Auto-explain on — Gemini will summarize grades after each refresh."
-      : "Auto-explain off — quotes only, no AI.",
-    "ok",
-    "ai",
-    "persistent"
-  );
-  if (!els.autoAnalyze.checked) {
-    aiExplainCache = {};
-    aiExplainGeneration += 1;
-    const state = await getLocalState();
-    renderWatchlist(state.watchlist, state.holdings, quoteCache);
-  }
-}
-
 /**
  * Ping Gemini with the pasted key (browser → Google only; never our servers).
  */
@@ -1331,6 +1378,9 @@ function formatGeminiError(error) {
   if (lower.includes("not found") || lower.includes("is not found")) {
     return "No free Gemini model available for this key. Enable Gemini in AI Studio.";
   }
+  if (lower.includes("did not return") || lower.includes("usable grade")) {
+    return "Gemini reply was unreadable. Try Explain grades again in a moment.";
+  }
   // Keep the popup compact — never dump Google's full error blob into the UI.
   const short = raw.replace(/\s+/g, " ").trim();
   return short.length > 110 ? `${short.slice(0, 107)}…` : short || "Gemini test failed";
@@ -1349,7 +1399,6 @@ async function onClearAllSettings() {
   els.geminiKey.type = "password";
   els.toggleKey.setAttribute("aria-pressed", "false");
   els.toggleKey.setAttribute("aria-label", "Show Gemini API key");
-  els.autoAnalyze.checked = false;
   quoteCache = {};
   aiExplainCache = {};
   aiExplainGeneration += 1;
@@ -1430,28 +1479,23 @@ async function onSaveAndSubscribe() {
     });
 
     const scheduleLabel = formatScheduleLabel(outbound.schedule);
-    let message = `Saved & Subscribed successfully! ${scheduleLabel} → ${outbound.email}`;
+    let message = `Saved — ${scheduleLabel} → ${outbound.email}`;
     if (response?.report_sent_now || response?.report_send_status === "sending") {
-      message =
-        `Saved & Subscribed — send window is open, report is emailing now. ` +
-        `${scheduleLabel} → ${outbound.email}`;
+      message = `Saved — send window open, emailing now → ${outbound.email}`;
     } else if (response?.report_send_status === "failed") {
       message =
-        `Saved & Subscribed, but could not start the immediate email. ` +
-        `Cron will retry while your window is open. ${scheduleLabel} → ${outbound.email}`;
+        `Saved — could not start email now; cron retries while the window is open.`;
     } else if (response?.report_send_status === "daily_cap") {
-      message =
-        `Saved & Subscribed (daily email cap reached). ${scheduleLabel} → ${outbound.email}`;
+      message = `Saved — daily email cap reached (max 2 today).`;
     } else if (response?.report_send_status === "already_sent") {
-      message =
-        `Saved & Subscribed (already sent for this time slot). ${scheduleLabel} → ${outbound.email}`;
+      message = `Saved — already sent for this time slot today.`;
     }
 
     const sendStatus = String(response?.report_send_status || "not_due");
     await setDeliveryStatusHint({
       status: sendStatus,
       at: new Date().toISOString(),
-      detail: message,
+      detail: "",
     });
     await refreshScheduleSummary();
 

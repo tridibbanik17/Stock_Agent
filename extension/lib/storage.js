@@ -243,7 +243,7 @@ export function computeNextSendAt(schedule, now = new Date()) {
 }
 
 /**
- * Popup line: next preferred time + delivery window hint.
+ * Popup line: next preferred send time (no internal early-window jargon).
  * @param {ScheduleConfig|unknown} schedule
  * @param {Date} [now]
  * @returns {string}
@@ -263,8 +263,7 @@ export function formatNextEmailLabel(schedule, now = new Date()) {
     hour: "numeric",
     minute: "2-digit",
   });
-  // Early window is 10 min before preferred; overdue catch-up can run after.
-  return `Next email: ${when} · window opens 10 min early`;
+  return `Next email: ${when}`;
 }
 
 /**
@@ -307,6 +306,42 @@ export async function setDeliveryStatusHint(patch) {
   return next;
 }
 
+/** How long “sending…” stays visible before we drop it. */
+const SENDING_HINT_TTL_MS = 2 * 60 * 1000;
+/** How long sent/failed/cap hints stay under Next email. */
+const RESULT_HINT_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * @param {DeliveryStatusHint|null|undefined} hint
+ * @param {Date} [now]
+ * @returns {number}
+ */
+function hintAgeMs(hint, now = new Date()) {
+  if (!hint?.at) return Number.POSITIVE_INFINITY;
+  const t = Date.parse(hint.at);
+  if (!Number.isFinite(t)) return Number.POSITIVE_INFINITY;
+  return Math.max(0, now.getTime() - t);
+}
+
+/**
+ * Drop stale send hints so “sending now” doesn’t stick forever.
+ * @param {DeliveryStatusHint|null} [hint]
+ * @param {Date} [now]
+ * @returns {Promise<DeliveryStatusHint>}
+ */
+export async function expireDeliveryStatusHint(hint = null, now = new Date()) {
+  const current = hint || (await getDeliveryStatusHint());
+  const status = current.status || "none";
+  if (status === "none" || status === "not_due") return current;
+
+  const age = hintAgeMs(current, now);
+  const ttl =
+    status === "sending" ? SENDING_HINT_TTL_MS : RESULT_HINT_TTL_MS;
+  if (age <= ttl) return current;
+
+  return setDeliveryStatusHint({ status: "none", at: null, detail: "" });
+}
+
 /**
  * Human line for schedule-next under the summary.
  * @param {ScheduleConfig|unknown} schedule
@@ -320,22 +355,29 @@ export function formatDeliveryStatusLine(schedule, hint = null, now = new Date()
     return nextLine;
   }
 
+  const age = hintAgeMs(hint, now);
+
   if (hint.status === "sending") {
-    return `${nextLine}\nLast save: report is sending now (check inbox in ~1 min).`;
+    if (age > SENDING_HINT_TTL_MS) return nextLine;
+    return `${nextLine}\nSend started — check your inbox shortly.`;
   }
   if (hint.status === "sent") {
-    return `${nextLine}\nLast save: report emailed successfully.`;
+    if (age > RESULT_HINT_TTL_MS) return nextLine;
+    return `${nextLine}\nLast email sent successfully.`;
   }
   if (hint.status === "failed") {
-    return `${nextLine}\nLast save: email failed — cron retries while the window is open.`;
+    if (age > RESULT_HINT_TTL_MS) return nextLine;
+    return `${nextLine}\nLast send failed — cron retries while the window is open.`;
   }
   if (hint.status === "daily_cap") {
-    return `${nextLine}\nDaily cap reached (max 2 emails today). Next sends tomorrow.`;
+    if (age > RESULT_HINT_TTL_MS) return nextLine;
+    return `${nextLine}\nDaily cap reached (max 2 emails today).`;
   }
   if (hint.status === "already_sent") {
+    if (age > RESULT_HINT_TTL_MS) return nextLine;
     return `${nextLine}\nAlready sent for this time slot today.`;
   }
-  if (hint.detail) {
+  if (hint.detail && age <= RESULT_HINT_TTL_MS) {
     return `${nextLine}\n${hint.detail}`;
   }
   return nextLine;

@@ -500,43 +500,6 @@ button.time-remove:hover {
   line-height: 1.35;
 }
 
-.ai-toggle {
-  display: grid;
-  grid-template-columns: 18px 1fr;
-  gap: 10px;
-  align-items: start;
-  padding: 10px;
-  border-radius: 8px;
-  background: #121a22;
-  border: 1px solid var(--line);
-  cursor: pointer;
-}
-
-.ai-toggle input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  accent-color: var(--ai-green-check);
-  cursor: pointer;
-}
-
-.ai-toggle-copy {
-  display: grid;
-  gap: 3px;
-}
-
-.ai-toggle-title {
-  font-size: 0.8rem;
-  font-weight: 650;
-  color: var(--text);
-}
-
-.ai-toggle-desc {
-  font-size: 0.7rem;
-  color: var(--muted);
-  line-height: 1.35;
-}
-
 input,
 select,
 button {
@@ -907,40 +870,29 @@ button.eye-btn[aria-pressed="true"] .eye-hide {
   display: block;
 }
 
-.ai-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+button.explain-grades-btn {
+  width: 100%;
+  padding: 10px 12px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+button.explain-grades-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 button.test-ai-btn {
   width: 100%;
-  padding: 10px 12px;
-  background: var(--ai-green-btn);
-  color: #f3faf5;
-  border: 1px solid #2f6b45;
-  font-weight: 700;
+  padding: 8px 12px;
+  margin-top: 6px;
+  font-weight: 600;
+  font-size: 0.8rem;
 }
 
-button.test-ai-btn:hover {
-  background: #2c5a3c;
-  color: #f3faf5;
-}
-
-button.explain-grades-btn {
-  width: 100%;
-  padding: 10px 12px;
-  font-weight: 650;
-}
-
-button.explain-grades-btn:hover:not(:disabled) {
+button.test-ai-btn:hover:not(:disabled) {
   color: #e8f3ff;
-  background: color-mix(in srgb, var(--accent) 22%, #15202b);
+  background: color-mix(in srgb, var(--accent) 18%, #15202b);
   border-color: var(--accent);
-}
-
-.ai-explain-hint {
-  margin-top: 8px;
 }
 
 button.clear-settings {
