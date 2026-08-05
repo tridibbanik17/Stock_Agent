@@ -23,6 +23,7 @@ import {
   getGeminiKey,
   getHoldings,
   getLocalState,
+  getCachedQuotes,
   joinTimeParts,
   normalizeSchedule,
   setDelivery,
@@ -30,6 +31,7 @@ import {
   expireDeliveryStatusHint,
   setGeminiKey,
   setHoldings,
+  setCachedQuotes,
   setWatchlist,
   splitTimeParts,
   suggestNextSendTime,
@@ -432,6 +434,8 @@ async function hydrateFromStorage() {
   applyScheduleToDom(normalizeSchedule(state.delivery.schedule));
   els.geminiKey.value = state.geminiApiKey || (await getGeminiKey());
 
+  // Show last stable grades immediately so a cold Yahoo fetch doesn't flash low scores.
+  quoteCache = await getCachedQuotes();
   renderWatchlist(state.watchlist, state.holdings, quoteCache);
 }
 
@@ -901,6 +905,37 @@ function formatPrice(value) {
 }
 
 /**
+ * True when a quote has enough trend data that the grade won't jump later.
+ * @param {QuoteSnapshot|null|undefined} quote
+ */
+function isGradeStable(quote) {
+  if (!quote || quote.price == null) return false;
+  if (quote.error && quote.price == null) return false;
+  return quote.aboveSma200 === true || quote.aboveSma200 === false;
+}
+
+/**
+ * Prefer a stable prior grade over a fresh incomplete Yahoo response.
+ * @param {QuoteSnapshot|null|undefined} prev
+ * @param {QuoteSnapshot|null|undefined} next
+ * @returns {QuoteSnapshot|null|undefined}
+ */
+function mergeQuoteSnapshot(prev, next) {
+  if (!next) return prev;
+  if (!prev) return next;
+  if (isGradeStable(next)) return next;
+  if (isGradeStable(prev)) {
+    return {
+      ...prev,
+      price: next.price ?? prev.price,
+      currency: next.currency || prev.currency,
+      asOf: next.asOf || prev.asOf,
+    };
+  }
+  return next;
+}
+
+/**
  * Fetch live yfinance snapshot + grades one ticker at a time (progressive UI).
  * @param {{ quiet?: boolean }} [opts]
  */
@@ -913,6 +948,7 @@ async function refreshQuotes(opts = {}) {
     quoteCache = {};
     quotesPending = new Set();
     quotesLoading = false;
+    await setCachedQuotes({});
     if (!quiet) {
       setStatus("Add a ticker before refreshing quotes.", "warn", "watchlist", "error");
     }
@@ -952,26 +988,31 @@ async function refreshQuotes(opts = {}) {
         const quote = (data?.quotes || []).find((q) => q?.ticker === ticker) ||
           (data?.quotes || [])[0];
         if (quote?.ticker) {
-          quoteCache[quote.ticker] = quote;
-          okCount += 1;
+          const merged = mergeQuoteSnapshot(quoteCache[quote.ticker], quote);
+          quoteCache[quote.ticker] = /** @type {QuoteSnapshot} */ (merged);
+          if (merged?.price != null) okCount += 1;
         } else {
-          quoteCache[ticker] = {
+          quoteCache[ticker] = mergeQuoteSnapshot(quoteCache[ticker], {
             ticker,
             price: null,
             error: "empty_snapshot",
-          };
+          });
         }
       } catch (error) {
         console.warn("[Stock Agent] quote failed", ticker, error);
-        quoteCache[ticker] = {
+        quoteCache[ticker] = mergeQuoteSnapshot(quoteCache[ticker], {
           ticker,
           price: null,
           error: error instanceof Error ? error.message : "fetch_failed",
-        };
+        });
       }
       quotesPending.delete(ticker);
       renderWatchlist(watchlist, state.holdings, quoteCache);
     }
+
+    await setCachedQuotes(
+      /** @type {Record<string, Record<string, unknown>>} */ (quoteCache)
+    );
 
     setStatus(
       `Updated ${okCount} quote${okCount === 1 ? "" : "s"}.`,

@@ -74,6 +74,7 @@ const STORAGE_KEYS = Object.freeze({
   watchlist: "watchlist",
   delivery: "delivery",
   userId: "userId",
+  quoteSnapshot: "quoteSnapshot",
 });
 
 /** @returns {string} */
@@ -566,6 +567,47 @@ export async function setAutoAnalyze(enabled) {
   const value = Boolean(enabled);
   await chrome.storage.local.set({ [STORAGE_KEYS.autoAnalyze]: value });
   return value;
+}
+
+/**
+ * Last successful quote/grade snapshot (local only — stabilizes popup open).
+ * @returns {Promise<Record<string, Record<string, unknown>>>}
+ */
+export async function getCachedQuotes() {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.quoteSnapshot);
+  const raw = result[STORAGE_KEYS.quoteSnapshot];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const quotes = raw.quotes;
+  if (!quotes || typeof quotes !== "object" || Array.isArray(quotes)) return {};
+  /** @type {Record<string, Record<string, unknown>>} */
+  const out = {};
+  for (const [ticker, quote] of Object.entries(quotes)) {
+    if (quote && typeof quote === "object" && !Array.isArray(quote)) {
+      out[String(ticker).toUpperCase()] = /** @type {Record<string, unknown>} */ (
+        quote
+      );
+    }
+  }
+  return out;
+}
+
+/**
+ * @param {Record<string, Record<string, unknown>>} quotes
+ * @returns {Promise<void>}
+ */
+export async function setCachedQuotes(quotes) {
+  const cleaned = {};
+  for (const [ticker, quote] of Object.entries(quotes || {})) {
+    if (!quote || typeof quote !== "object") continue;
+    if (quote.error && quote.price == null) continue;
+    cleaned[String(ticker).toUpperCase()] = quote;
+  }
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.quoteSnapshot]: {
+      at: new Date().toISOString(),
+      quotes: cleaned,
+    },
+  });
 }
 
 /**

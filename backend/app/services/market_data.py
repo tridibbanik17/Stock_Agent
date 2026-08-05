@@ -454,11 +454,19 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
 
 
 def _quote_needs_retry(result: dict[str, Any]) -> bool:
-    """True when the fetch failed hard or returned no usable price."""
+    """
+    True when the fetch failed hard, returned no price, or is missing trend
+    inputs that make grades jump +1 on a later refresh (common after cold start).
+    """
     if result.get("error") and result.get("error") != "price_unavailable":
         return True
-    return result.get("price") is None
-
+    if result.get("price") is None:
+        return True
+    # Price alone is not enough — incomplete history leaves aboveSma200=None and
+    # under-scores (e.g. HOLD 3/5 → STRONG BUY 4/5 once SMA loads).
+    if result.get("aboveSma200") is None:
+        return True
+    return False
 
 def analyze_ticker_with_retry(
     ticker: str,
@@ -546,7 +554,7 @@ def analyze_watchlist(
                     "assetClass": classify_asset(ticker),
                 }
 
-    # Second pass: cooler sequential retries for anything still missing a price.
+    # Second pass: cooler sequential retries for incomplete price / trend data.
     missing = [t for t in unique if _quote_needs_retry(results.get(t) or {})]
     if missing:
         logger.warning(
