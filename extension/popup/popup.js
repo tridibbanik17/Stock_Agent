@@ -67,7 +67,9 @@ const els = {
   clearSettings: /** @type {HTMLButtonElement} */ ($("clear-settings")),
   watchlistCount: /** @type {HTMLElement} */ ($("watchlist-count")),
   listHead: /** @type {HTMLElement} */ ($("list-head")),
+  sortRow: /** @type {HTMLElement} */ ($("sort-row")),
   refreshQuotes: /** @type {HTMLButtonElement} */ ($("refresh-quotes")),
+  quotesUpdated: /** @type {HTMLElement} */ ($("quotes-updated")),
   statusWatchlist: /** @type {HTMLElement} */ ($("status-watchlist")),
   statusSubscribe: /** @type {HTMLElement} */ ($("status-subscribe")),
   statusAi: /** @type {HTMLElement} */ ($("status-ai")),
@@ -80,6 +82,10 @@ let quoteCache = {};
 let quotesLoading = false;
 /** Tickers still waiting on a sequential snapshot fetch. */
 let quotesPending = /** @type {Set<string>} */ (new Set());
+/** When quotes were last successfully refreshed (local clock). */
+let quotesUpdatedAt = /** @type {Date|null} */ (null);
+/** @type {'symbol'|'grade'|'pnl'} */
+let watchlistSort = "symbol";
 /**
  * Local Gemini blurbs keyed by ticker.
  * @type {Record<string, { status: 'loading'|'ok'|'error', text: string }>}
@@ -108,6 +114,7 @@ let suggestActiveIndex = -1;
  *   notes?: string[],
  *   newsRisks?: Array<string|{ title?: string, url?: string }>,
  *   error?: string|null,
+ *   asOf?: string|null,
  * }} QuoteSnapshot
  */
 
@@ -140,6 +147,7 @@ async function init() {
   await hydrateFromStorage();
   // Live prices after local hydrate (non-blocking UX if API is down).
   void refreshQuotes({ quiet: true });
+  window.setInterval(() => updateQuotesUpdatedLabel(), 30_000);
 }
 
 // ---------------------------------------------------------------------------
@@ -273,6 +281,21 @@ function bindEvents() {
 
   els.refreshQuotes.addEventListener("click", () => {
     void refreshQuotes({ quiet: false });
+  });
+
+  els.sortRow.addEventListener("click", (event) => {
+    const btn = /** @type {HTMLElement} */ (event.target).closest("[data-sort]");
+    if (!(btn instanceof HTMLButtonElement)) return;
+    const mode = btn.dataset.sort;
+    if (mode !== "symbol" && mode !== "grade" && mode !== "pnl") return;
+    watchlistSort = mode;
+    for (const chip of els.sortRow.querySelectorAll(".sort-chip")) {
+      if (!(chip instanceof HTMLButtonElement)) continue;
+      const active = chip === btn;
+      chip.classList.toggle("is-active", active);
+      chip.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+    void rerenderWatchlist();
   });
 
   // Persist private lots as the user edits inline fields.
@@ -436,7 +459,32 @@ async function hydrateFromStorage() {
 
   // Show last stable grades immediately so a cold Yahoo fetch doesn't flash low scores.
   quoteCache = await getCachedQuotes();
+  const asOfTimes = Object.values(quoteCache)
+    .map((q) => (q?.asOf ? Date.parse(String(q.asOf)) : NaN))
+    .filter((t) => Number.isFinite(t));
+  if (asOfTimes.length) {
+    quotesUpdatedAt = new Date(Math.max(...asOfTimes));
+  }
+  updateQuotesUpdatedLabel();
   renderWatchlist(state.watchlist, state.holdings, quoteCache);
+}
+
+function updateQuotesUpdatedLabel() {
+  if (!els.quotesUpdated) return;
+  if (!quotesUpdatedAt) {
+    els.quotesUpdated.textContent = "Not updated yet";
+    return;
+  }
+  const sec = Math.max(0, Math.floor((Date.now() - quotesUpdatedAt.getTime()) / 1000));
+  if (sec < 15) {
+    els.quotesUpdated.textContent = "Updated just now";
+  } else if (sec < 60) {
+    els.quotesUpdated.textContent = `Updated ${sec}s ago`;
+  } else if (sec < 3600) {
+    els.quotesUpdated.textContent = `Updated ${Math.floor(sec / 60)}m ago`;
+  } else {
+    els.quotesUpdated.textContent = `Updated ${Math.floor(sec / 3600)}h ago`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +514,7 @@ function renderTimeRows(times) {
     empty.className = "empty-times";
     empty.textContent = "No send times yet — add one below.";
     els.times.appendChild(empty);
+    els.addTime.hidden = false;
     els.addTime.disabled = false;
     els.addTime.textContent = "+ Add a send time";
     return;
@@ -531,11 +580,9 @@ function renderTimeRows(times) {
     els.times.appendChild(row);
   });
 
+  els.addTime.hidden = list.length >= MAX_SEND_TIMES;
   els.addTime.disabled = list.length >= MAX_SEND_TIMES;
-  els.addTime.textContent =
-    list.length >= MAX_SEND_TIMES
-      ? `Maximum ${MAX_SEND_TIMES} times/day`
-      : "+ Add another time";
+  els.addTime.textContent = "+ Add another time";
   els.addTime.title =
     list.length >= MAX_SEND_TIMES
       ? `Maximum ${MAX_SEND_TIMES} times per day`
@@ -723,8 +770,9 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
   els.watchlist.innerHTML = "";
   updateCountBadge(watchlist.length);
 
-  // Column headers only appear once there is at least one ticker.
+  // Column headers / sort only appear once there is at least one ticker.
   els.listHead.hidden = watchlist.length === 0;
+  els.sortRow.hidden = watchlist.length === 0;
 
   if (!watchlist.length) {
     const empty = document.createElement("li");
@@ -734,7 +782,9 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     return;
   }
 
-  for (const ticker of watchlist) {
+  const ordered = sortWatchlistTickers(watchlist, holdings, quotes);
+
+  for (const ticker of ordered) {
     const lot = holdings[ticker] || {};
     const quote = quotes[ticker] || null;
     const li = document.createElement("li");
@@ -791,11 +841,99 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
 
     li.append(row, meta);
 
+    const pnl = buildPnLNode(lot, quote);
+    if (pnl) li.appendChild(pnl);
+
     const ai = buildAiBlurbNode(ticker, quote);
     if (ai) li.appendChild(ai);
 
     els.watchlist.appendChild(li);
   }
+}
+
+async function rerenderWatchlist() {
+  const state = await getLocalState();
+  renderWatchlist(state.watchlist, state.holdings, quoteCache);
+}
+
+/**
+ * @param {string[]} watchlist
+ * @param {Record<string, { shares?: number|null, buyPrice?: number|null }>} holdings
+ * @param {Record<string, QuoteSnapshot>} quotes
+ * @returns {string[]}
+ */
+function sortWatchlistTickers(watchlist, holdings, quotes) {
+  const list = [...watchlist];
+  if (watchlistSort === "symbol") {
+    return list.sort((a, b) => a.localeCompare(b));
+  }
+  if (watchlistSort === "grade") {
+    return list.sort((a, b) => gradeRank(quotes[b]) - gradeRank(quotes[a]) || a.localeCompare(b));
+  }
+  // P&L: highest gain first; tickers without a position sink to the bottom.
+  return list.sort((a, b) => {
+    const pa = computePnL(holdings[a], quotes[a]);
+    const pb = computePnL(holdings[b], quotes[b]);
+    const va = pa ? pa.pnlPct : Number.NEGATIVE_INFINITY;
+    const vb = pb ? pb.pnlPct : Number.NEGATIVE_INFINITY;
+    if (vb !== va) return vb - va;
+    return a.localeCompare(b);
+  });
+}
+
+/** @param {QuoteSnapshot|null|undefined} quote */
+function gradeRank(quote) {
+  if (typeof quote?.score === "number") return quote.score;
+  const g = String(quote?.grade || quote?.verdict || "").toUpperCase();
+  if (g.includes("STRONG")) return 4;
+  if (g.includes("HOLD")) return 3;
+  if (g.includes("AVOID")) return 1;
+  return 0;
+}
+
+/**
+ * @param {{ shares?: number|null, buyPrice?: number|null }} lot
+ * @param {QuoteSnapshot|null|undefined} quote
+ * @returns {{ value: number, cost: number, pnl: number, pnlPct: number, currency: string }|null}
+ */
+function computePnL(lot, quote) {
+  const shares = Number(lot?.shares);
+  const buy = Number(lot?.buyPrice);
+  const price = quote?.price;
+  if (!Number.isFinite(shares) || shares <= 0) return null;
+  if (!Number.isFinite(buy) || buy <= 0) return null;
+  if (typeof price !== "number" || !Number.isFinite(price)) return null;
+  const value = shares * price;
+  const cost = shares * buy;
+  if (cost <= 0) return null;
+  const pnl = value - cost;
+  return {
+    value,
+    cost,
+    pnl,
+    pnlPct: (pnl / cost) * 100,
+    currency: String(quote?.currency || "USD"),
+  };
+}
+
+/**
+ * @param {{ shares?: number|null, buyPrice?: number|null }} lot
+ * @param {QuoteSnapshot|null|undefined} quote
+ * @returns {HTMLElement|null}
+ */
+function buildPnLNode(lot, quote) {
+  const stats = computePnL(lot, quote);
+  if (!stats) return null;
+  const el = document.createElement("p");
+  el.className = "position-pnl";
+  const sign = stats.pnl >= 0 ? "+" : "−";
+  const absPnl = Math.abs(stats.pnl);
+  const absPct = Math.abs(stats.pnlPct);
+  el.classList.add(stats.pnl >= 0 ? "is-gain" : "is-loss");
+  el.textContent =
+    `Value ${formatPrice(stats.value)} ${stats.currency} · ` +
+    `P&L ${sign}${formatPrice(absPnl)} (${sign}${absPct.toFixed(1)}%)`;
+  return el;
 }
 
 /**
@@ -1013,6 +1151,8 @@ async function refreshQuotes(opts = {}) {
     await setCachedQuotes(
       /** @type {Record<string, Record<string, unknown>>} */ (quoteCache)
     );
+    quotesUpdatedAt = new Date();
+    updateQuotesUpdatedLabel();
 
     setStatus(
       `Updated ${okCount} quote${okCount === 1 ? "" : "s"}.`,
@@ -1049,7 +1189,7 @@ async function onExplainGrades() {
     .map((t) => quoteCache[t])
     .filter((q) => q && !(q.error && q.price == null));
   if (!quotes.length) {
-    setStatus("Refresh quotes first, then Explain grades.", "warn", "ai", "error");
+    setStatus("Refresh quotes first, then explain grades.", "warn", "ai", "error");
     return;
   }
 
@@ -1158,10 +1298,10 @@ function updateExplainButtonLabel(missingCount) {
       Object.keys(aiExplainCache).length === 0 ||
       Object.values(aiExplainCache).every((e) => e?.status !== "ok");
     els.explainGrades.textContent = allMissing
-      ? "Explain grades"
+      ? "Explain watchlist grades"
       : `Explain remaining (${missingCount})`;
   } else {
-    els.explainGrades.textContent = "Explain grades";
+    els.explainGrades.textContent = "Explain watchlist grades";
   }
 }
 
@@ -1341,6 +1481,8 @@ async function persistHoldingsFromDom() {
   const existing = await getHoldings();
   const merged = { ...existing, ...holdings };
   await setHoldings(merged);
+  const state = await getLocalState();
+  renderWatchlist(state.watchlist, merged, quoteCache);
   setStatus("Private lots saved on this device only.", "ok", "watchlist", "transient");
 }
 
@@ -1420,7 +1562,7 @@ function formatGeminiError(error) {
     return "No free Gemini model available for this key. Enable Gemini in AI Studio.";
   }
   if (lower.includes("did not return") || lower.includes("usable grade")) {
-    return "Gemini reply was unreadable. Try Explain grades again in a moment.";
+    return "Gemini reply was unreadable. Try explaining grades again in a moment.";
   }
   // Keep the popup compact — never dump Google's full error blob into the UI.
   const short = raw.replace(/\s+/g, " ").trim();

@@ -89,8 +89,8 @@ export function detectTimezone() {
 /** @returns {ScheduleConfig} */
 export function defaultSchedule() {
   return {
-    frequency: "weekly",
-    days: [6],
+    frequency: "weekdays",
+    days: [1, 2, 3, 4, 5],
     times: ["09:00"],
     timezone: detectTimezone(),
   };

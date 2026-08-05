@@ -29,9 +29,19 @@
       <section class="panel" aria-labelledby="watchlist-heading">
         <div class="panel-head">
           <h2 id="watchlist-heading">Watchlist</h2>
-          <button type="button" id="refresh-quotes" class="ghost refresh-quotes" title="Fetch live prices &amp; grades">
-            Refresh
-          </button>
+          <div class="refresh-wrap">
+            <span id="quotes-updated" class="quotes-updated" aria-live="polite"
+              >Not updated yet</span
+            >
+            <button
+              type="button"
+              id="refresh-quotes"
+              class="ghost refresh-quotes"
+              title="Fetch live prices &amp; grades"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         <div class="add-row">
@@ -40,7 +50,7 @@
               id="ticker-input"
               type="text"
               maxlength="12"
-              placeholder="Add ticker (e.g. NVDA)"
+              placeholder="Type symbol or pick from list"
               autocomplete="off"
               spellcheck="false"
               aria-label="Ticker symbol"
@@ -63,6 +73,26 @@
           Ticker is required for grades and email. Number of shares and avg buy
           stay on this device only and are optional; they don’t affect grades.
         </p>
+
+        <div id="sort-row" class="sort-row" hidden>
+          <span class="field-label">Sort</span>
+          <div class="sort-chips" role="group" aria-label="Sort watchlist">
+            <button
+              type="button"
+              class="sort-chip is-active"
+              data-sort="symbol"
+              aria-pressed="true"
+            >
+              Symbol
+            </button>
+            <button type="button" class="sort-chip" data-sort="grade" aria-pressed="false">
+              Grade
+            </button>
+            <button type="button" class="sort-chip" data-sort="pnl" aria-pressed="false">
+              P&amp;L
+            </button>
+          </div>
+        </div>
 
         <div id="list-head" class="list-head" hidden>
           <span>Symbol</span>
@@ -147,7 +177,7 @@
           </div>
 
           <p id="schedule-summary" class="schedule-summary" aria-live="polite">
-            Every Saturday at 9:00 AM
+            Weekdays at 9:00 AM
           </p>
           <p id="schedule-next" class="schedule-next" aria-live="polite">
             Next email: —
@@ -235,7 +265,7 @@
         </div>
 
         <button type="button" id="explain-grades" class="primary explain-grades-btn">
-          Explain grades
+          Explain watchlist grades
         </button>
         <button type="button" id="test-ai" class="ghost test-ai-btn">
           Test API key

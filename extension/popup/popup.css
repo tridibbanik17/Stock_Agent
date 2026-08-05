@@ -115,6 +115,20 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+}
+
+.refresh-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.quotes-updated {
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 h2 {
@@ -134,6 +148,59 @@ h2 {
   margin-top: -2px;
   font-size: 0.68rem;
   line-height: 1.35;
+}
+
+.sort-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sort-row[hidden] {
+  display: none;
+}
+
+.sort-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+button.sort-chip {
+  padding: 5px 9px;
+  font-size: 0.7rem;
+  font-weight: 650;
+  background: #121a22;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+button.sort-chip:hover {
+  color: var(--text);
+  background: #15202b;
+}
+
+button.sort-chip.is-active {
+  color: #e8f3ff;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, #0e141b);
+}
+
+.position-pnl {
+  margin: 6px 0 0;
+  padding: 0 2px;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.position-pnl.is-gain {
+  color: #3ecf8e;
+}
+
+.position-pnl.is-loss {
+  color: #f07178;
 }
 
 /* Custom delivery schedule builder */
@@ -308,6 +375,10 @@ button.time-remove {
 button.add-time-btn {
   width: 100%;
   font-size: 0.74rem;
+}
+
+button.add-time-btn[hidden] {
+  display: none;
 }
 
 button.add-time-btn:hover:not(:disabled) {
@@ -940,6 +1011,10 @@ button.time-remove {
 button.add-time-btn {
   width: 100%;
   font-size: 0.74rem;
+}
+
+button.add-time-btn[hidden] {
+  display: none;
 }
 
 /* Re-assert after base button rules so macro/chip selection always paints. */
