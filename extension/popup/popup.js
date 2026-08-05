@@ -132,6 +132,8 @@ let suggestActiveIndex = -1;
 
 /** Debounce timer for private holdings writes while typing. */
 let holdingsSaveTimer = 0;
+/** Last shares/avg-buy ticker edited — for inline save confirmation. */
+let holdingsLastEditedTicker = /** @type {string|null} */ (null);
 
 /** Toast hide timers (transient logs). */
 let toastHideTimer = 0;
@@ -305,7 +307,7 @@ function bindEvents() {
   // Persist private lots as the user edits inline fields.
   els.watchlist.addEventListener("input", onHoldingsInput);
   els.watchlist.addEventListener("change", () => {
-    void persistHoldingsFromDom();
+    void persistHoldingsFromDom(holdingsLastEditedTicker);
   });
 }
 
@@ -1597,17 +1599,19 @@ function onHoldingsInput(event) {
   const target = /** @type {HTMLElement} */ (event.target);
   if (!(target instanceof HTMLInputElement) || !target.dataset.ticker) return;
 
+  holdingsLastEditedTicker = target.dataset.ticker || null;
   window.clearTimeout(holdingsSaveTimer);
   holdingsSaveTimer = window.setTimeout(() => {
-    void persistHoldingsFromDom();
+    void persistHoldingsFromDom(holdingsLastEditedTicker);
   }, 280);
 }
 
 /**
  * Collect inline Shares / Avg buy inputs and write to chrome.storage.local.
  * This path never builds a cloud payload.
+ * @param {string|null} [focusTicker] ticker whose card should show the save flash
  */
-async function persistHoldingsFromDom() {
+async function persistHoldingsFromDom(focusTicker = null) {
   /** @type {Record<string, { shares: number|null, buyPrice: number|null }>} */
   const holdings = {};
 
@@ -1639,7 +1643,40 @@ async function persistHoldingsFromDom() {
   for (const ticker of Object.keys(merged)) {
     patchPnL(ticker, merged[ticker] || {}, quoteCache[ticker]);
   }
-  setStatus("Private lots saved on this device only.", "ok", "watchlist", "transient");
+  if (focusTicker) showLotsSavedFlash(focusTicker);
+}
+
+/**
+ * Inline save confirmation on the card being edited.
+ * @param {string} ticker
+ */
+function showLotsSavedFlash(ticker) {
+  const card = els.watchlist.querySelector(
+    `.ticker-card[data-ticker="${CSS.escape(ticker)}"]`
+  );
+  if (!(card instanceof HTMLElement)) return;
+
+  card.querySelectorAll(".lots-saved-flash").forEach((el) => el.remove());
+  els.watchlist
+    .querySelectorAll(".lots-saved-flash")
+    .forEach((el) => el.remove());
+
+  const flash = document.createElement("p");
+  flash.className = "lots-saved-flash";
+  flash.setAttribute("role", "status");
+  flash.textContent = "Private lots saved on this device only.";
+
+  const pnl = card.querySelector(".position-pnl");
+  const ai = card.querySelector(".ai-blurb");
+  if (pnl) pnl.after(flash);
+  else if (ai) card.insertBefore(flash, ai);
+  else card.appendChild(flash);
+
+  requestAnimationFrame(() => flash.classList.add("is-visible"));
+  window.setTimeout(() => {
+    flash.classList.add("is-fading-out");
+    window.setTimeout(() => flash.remove(), 280);
+  }, 2200);
 }
 
 // ---------------------------------------------------------------------------

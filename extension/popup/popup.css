@@ -725,6 +725,23 @@ button.remove:hover {
   opacity: 0;
 }
 
+.lots-saved-flash {
+  margin: 0;
+  padding: 2px 2px 0;
+  font-size: 0.68rem;
+  color: #7dcea0;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.lots-saved-flash.is-visible {
+  opacity: 1;
+}
+
+.lots-saved-flash.is-fading-out {
+  opacity: 0;
+}
+
 .ticker-row {
   display: grid;
   grid-template-columns: 58px 1fr 1fr 58px;
