@@ -94,9 +94,9 @@ def format_report_text(
     unsubscribe_url: str | None = None,
 ) -> str:
     lines = [
-        "STOCK AGENT - SCHEDULED PORTFOLIO INTELLIGENCE",
+        "STOCK AGENT CHROME EXTENSION — WATCHLIST REPORT",
         "=" * 46,
-        f"Recipient: {email}",
+        _grade_summary_line(quotes),
         "",
     ]
     for q in quotes:
@@ -138,7 +138,7 @@ def format_report_text(
                 "-" * 46,
                 "To stop these emails (one click):",
                 unsubscribe_url,
-                "You can turn them back on anytime from the Stock Agent extension.",
+                "You can turn them back on anytime from the Stock Agent Chrome extension.",
             ]
         )
     return "\n".join(lines)
@@ -194,6 +194,56 @@ def _esc(value: object) -> str:
     )
 
 
+def _human_asset_class(raw: object) -> str:
+    key = str(raw or "standard").strip().lower()
+    labels = {
+        "standard": "Standard",
+        "growth_tech": "Growth / tech",
+        "capital_intensive": "Capital intensive",
+        "crypto_proxy": "Crypto proxy",
+        "financial": "Financial",
+        "utility": "Utility",
+    }
+    return labels.get(key, key.replace("_", " ").title() or "Standard")
+
+
+def _human_bool(raw: object) -> str:
+    if raw is True:
+        return "Yes"
+    if raw is False:
+        return "No"
+    return "n/a"
+
+
+def _grade_summary_line(quotes: list[dict[str, Any]]) -> str:
+    """Short scannable counts for the email intro / subject."""
+    strong = hold = avoid = 0
+    for q in quotes:
+        g = quote_grade(q)
+        if g == "STRONG_BUY":
+            strong += 1
+        elif g == "HOLD":
+            hold += 1
+        elif g == "AVOID":
+            avoid += 1
+    parts: list[str] = []
+    if strong:
+        parts.append(f"{strong} strong buy")
+    if hold:
+        parts.append(f"{hold} hold")
+    if avoid:
+        parts.append(f"{avoid} avoid")
+    return " · ".join(parts) if parts else f"{len(quotes)} tickers"
+
+
+def build_report_subject(report_day, quotes: list[dict[str, Any]]) -> str:
+    """Inbox-friendly subject with local date + grade mix."""
+    month = report_day.strftime("%b")
+    day = str(int(report_day.day))
+    summary = _grade_summary_line(quotes)
+    return f"Stock Agent · {month} {day} · {summary}"
+
+
 def _grade_color(grade: str) -> str:
     g = str(grade or "").upper()
     if "STRONG" in g or "BUY" in g:
@@ -241,18 +291,26 @@ def format_report_html(
     if no_change_digest:
         intro = (
             "<p style='margin:0 0 12px;color:#334155;font-size:14px;line-height:1.5;'>"
-            "No grade changes since your last Stock Agent report. "
-            "Here is a quick snapshot of current grades so you know the scheduler is running."
+            "No grade changes since your last report. "
+            "Here’s a quick snapshot so you know the scheduler is running."
             "</p>"
         )
         title = "No grade changes"
+        summary_html = ""
     else:
+        summary = _grade_summary_line(quotes)
         intro = (
             "<p style='margin:0 0 12px;color:#334155;font-size:14px;line-height:1.5;'>"
-            f"Scheduled portfolio intelligence for <strong>{_esc(email)}</strong>."
+            "Rule-based grades for your watchlist. "
+            "Metrics and notes explain each score — not personalized advice."
             "</p>"
         )
-        title = "Portfolio report"
+        title = "Watchlist report"
+        summary_html = (
+            f"<p style='margin:0 0 16px;font-size:13px;color:#0f172a;font-weight:650;'>"
+            f"{_esc(summary)}"
+            f"</p>"
+        )
 
     card_rows = []
     for q in quotes:
@@ -286,8 +344,8 @@ def format_report_html(
               D/E {_esc(q.get('deRatio', 'N/A'))}
               · PEG {_esc(q.get('pegRatio', 'N/A'))}
               · RSI {_esc(q.get('rsi', 'N/A'))}
-              · Above 200-SMA {_esc(q.get('aboveSma200'))}
-              · {_esc(q.get('assetClass', 'standard'))}
+              · Above 200-SMA {_esc(_human_bool(q.get('aboveSma200')))}
+              · {_esc(_human_asset_class(q.get('assetClass')))}
             </p>
             """
         card_rows.append(
@@ -313,7 +371,7 @@ def format_report_html(
         unsub = f"""
         <p style="margin:24px 0 0;font-size:12px;color:#64748b;line-height:1.5;">
           <a href="{_esc(unsubscribe_url)}" style="color:#2563eb;">Unsubscribe</a>
-          from scheduled emails. You can re-enable anytime in the Stock Agent extension.
+          from scheduled emails. You can re-enable anytime in the Stock Agent Chrome extension.
         </p>
         """
 
@@ -339,9 +397,10 @@ def format_report_html(
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:10px;padding:24px 22px;font-family:Segoe UI,Helvetica,Arial,sans-serif;">
           <tr>
             <td>
-              <p style="margin:0;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;">Stock Agent</p>
+              <p style="margin:0;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;">Stock Agent Chrome Extension</p>
               <h1 style="margin:6px 0 12px;font-size:22px;color:#0f172a;">{_esc(title)}</h1>
               {intro}
+              {summary_html}
               {change_block}
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 {''.join(card_rows) if card_rows else '<tr><td style="color:#64748b;">No tickers in this report.</td></tr>'}
@@ -386,7 +445,10 @@ def format_no_change_text(
 def send_plain_email(to_email: str, subject: str, body: str) -> bool:
     """Send a plain-text email via Resend, or dry-run log when unset."""
     api_key = os.getenv("RESEND_API_KEY", "").strip()
-    from_addr = os.getenv("REPORT_FROM_EMAIL", "Stock Agent <onboarding@resend.dev>").strip()
+    from_addr = os.getenv(
+        "REPORT_FROM_EMAIL",
+        "Stock Agent Chrome Extension <onboarding@resend.dev>",
+    ).strip()
 
     if not api_key:
         logger.warning(
@@ -444,7 +506,10 @@ def send_report_email(
     Otherwise log the report (dry-run) so cron still exercises the pipeline.
     """
     api_key = os.getenv("RESEND_API_KEY", "").strip()
-    from_addr = os.getenv("REPORT_FROM_EMAIL", "Stock Agent <onboarding@resend.dev>").strip()
+    from_addr = os.getenv(
+        "REPORT_FROM_EMAIL",
+        "Stock Agent Chrome Extension <onboarding@resend.dev>",
+    ).strip()
 
     if not api_key:
         logger.warning(

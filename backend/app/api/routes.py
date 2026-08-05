@@ -9,7 +9,7 @@ import os
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Body, Header, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 
 from app.api.abuse import (
@@ -21,13 +21,13 @@ from app.models.schemas import (
     SnapshotRequest,
     SubscribeRequest,
     SubscribeResponse,
-    UnsubscribeRequest,
     UnsubscribeResponse,
 )
 from app.services.grading import attach_grades
 from app.services.market_data import analyze_watchlist
 from app.services.supabase_client import (
     disable_subscription_by_token,
+    enable_subscription_by_token,
     upsert_user_subscription,
 )
 
@@ -69,18 +69,29 @@ def _unsubscribe_response(record: dict[str, Any]) -> UnsubscribeResponse:
     )
 
 
-def _unsubscribe_html(record: dict[str, Any] | None, error: str | None = None) -> str:
-    if error:
-        title = "Unsubscribe failed"
-        body = html.escape(error)
-    else:
-        email = html.escape(str((record or {}).get("email") or "your address"))
-        title = "Unsubscribed"
-        body = (
-            f"Scheduled Stock Agent emails for <strong>{email}</strong> are now off. "
-            "Open the Chrome extension and use <strong>Save &amp; Subscribe</strong> "
-            "again if you want them back."
-        )
+def _subscription_html(
+    *,
+    title: str,
+    body_html: str,
+    token: str | None = None,
+    mode: str = "unsubscribed",
+) -> str:
+    """Simple confirmation page for browser unsubscribe / resubscribe."""
+    actions = ""
+    if mode == "unsubscribed" and token:
+        safe_token = html.escape(token, quote=True)
+        actions = f"""
+        <p style="margin:1.25rem 0 0;">
+          <a class="btn" href="/api/resubscribe?token={safe_token}">Resubscribe</a>
+        </p>
+        <p class="note">Or open the Chrome extension and click <strong>Save &amp; Subscribe</strong>.</p>
+        <p class="note">If Gmail shows “You unsubscribed from …”, also undo that in Gmail or future mail may be filtered even after you resubscribe here.</p>
+        """
+    elif mode == "resubscribed":
+        actions = """
+        <p class="note">Scheduled emails are on again. If Gmail previously blocked the sender, check Spam or Gmail’s unsubscribe settings for that address.</p>
+        """
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -107,16 +118,80 @@ def _unsubscribe_html(record: dict[str, Any] | None, error: str | None = None) -
       margin: 0 0 0.75rem;
     }}
     p {{ margin: 0; color: #b7c2ce; }}
+    p + p {{ margin-top: 0.75rem; }}
+    .note {{ font-size: 0.9rem; color: #8b9aab; }}
+    .btn {{
+      display: inline-block;
+      margin-top: 0.25rem;
+      padding: 0.65rem 1rem;
+      background: #2f6fed;
+      color: #fff !important;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 650;
+    }}
+    .btn:hover {{ filter: brightness(1.08); }}
   </style>
 </head>
 <body>
   <main>
     <h1>{html.escape(title)}</h1>
-    <p>{body}</p>
+    <p>{body_html}</p>
+    {actions}
   </main>
 </body>
 </html>
 """
+
+
+def _unsubscribe_html(
+    record: dict[str, Any] | None,
+    error: str | None = None,
+    *,
+    token: str | None = None,
+) -> str:
+    if error:
+        return _subscription_html(
+            title="Unsubscribe failed",
+            body_html=html.escape(error),
+            mode="error",
+        )
+    email = html.escape(str((record or {}).get("email") or "your address"))
+    enabled = (record or {}).get("enabled")
+    status_bit = (
+        "Our records now show <strong>enabled = false</strong> (emails off)."
+        if enabled is False
+        else "If Supabase still shows enabled = true, refresh the table — or tell us; the write may have failed."
+    )
+    body = (
+        f"Scheduled Stock Agent emails for <strong>{email}</strong> are now off. "
+        f"{status_bit}"
+    )
+    return _subscription_html(
+        title="Unsubscribed",
+        body_html=body,
+        token=token,
+        mode="unsubscribed",
+    )
+
+
+def _resubscribe_html(record: dict[str, Any] | None, error: str | None = None) -> str:
+    if error:
+        return _subscription_html(
+            title="Resubscribe failed",
+            body_html=html.escape(error),
+            mode="error",
+        )
+    email = html.escape(str((record or {}).get("email") or "your address"))
+    body = (
+        f"Scheduled Stock Agent emails for <strong>{email}</strong> are on again "
+        f"(<strong>enabled = true</strong>)."
+    )
+    return _subscription_html(
+        title="Resubscribed",
+        body_html=body,
+        mode="resubscribed",
+    )
 
 
 def _run_unsubscribe(token: str) -> dict[str, Any]:
@@ -144,6 +219,31 @@ def _run_unsubscribe(token: str) -> dict[str, Any]:
             detail="Database connection failed. Check Supabase credentials and schema.",
         ) from exc
 
+
+def _run_resubscribe(token: str) -> dict[str, Any]:
+    try:
+        return enable_subscription_by_token(token)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("Resubscribe failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Database connection failed. Check Supabase credentials and schema.",
+        ) from exc
 
 @router.post(
     "/subscribe",
@@ -278,7 +378,10 @@ async def unsubscribe_get(
     logger.info("GET /api/unsubscribe token_prefix=%s", token[:8])
     try:
         record = _run_unsubscribe(token)
-        return HTMLResponse(content=_unsubscribe_html(record), status_code=200)
+        return HTMLResponse(
+            content=_unsubscribe_html(record, token=token),
+            status_code=200,
+        )
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "Unsubscribe failed"
         return HTMLResponse(
@@ -293,23 +396,57 @@ async def unsubscribe_get(
     summary="Disable scheduled emails by token",
 )
 async def unsubscribe_post(
+    request: Request,
     _: ProtectUnsubscribe,
     token: str | None = Query(default=None, min_length=8, max_length=64),
-    body: UnsubscribeRequest | None = Body(default=None),
 ) -> UnsubscribeResponse:
     """
-    Flip enabled=false. Accepts JSON `{ "token": "..." }` or `?token=`
-    (RFC 8058 one-click List-Unsubscribe style).
+    Flip enabled=false.
+
+    Gmail/Outlook one-click (RFC 8058) POSTs form body
+    `List-Unsubscribe=One-Click` to the List-Unsubscribe URL — token stays in
+    the query string. Also accepts JSON `{ "token": "..." }`.
     """
-    resolved = (body.token if body else None) or token
+    resolved = token
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "application/json" in content_type:
+        try:
+            data = await request.json()
+            if isinstance(data, dict) and data.get("token"):
+                resolved = str(data["token"])
+        except Exception:
+            logger.warning("Unsubscribe POST JSON body unreadable; using query token")
+
     if not resolved:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="token is required (JSON body or query string)",
+            detail="token is required (query string or JSON body)",
         )
     logger.info("POST /api/unsubscribe token_prefix=%s", resolved[:8])
     record = _run_unsubscribe(resolved)
     return _unsubscribe_response(record)
+
+
+@router.get(
+    "/resubscribe",
+    summary="Re-enable scheduled emails (token from unsubscribe page)",
+    response_class=HTMLResponse,
+)
+async def resubscribe_get(
+    _: ProtectUnsubscribe,
+    token: str = Query(..., min_length=8, max_length=64),
+) -> HTMLResponse:
+    """Browser button on the unsubscribe confirmation page."""
+    logger.info("GET /api/resubscribe token_prefix=%s", token[:8])
+    try:
+        record = _run_resubscribe(token)
+        return HTMLResponse(content=_resubscribe_html(record), status_code=200)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Resubscribe failed"
+        return HTMLResponse(
+            content=_resubscribe_html(None, error=detail),
+            status_code=exc.status_code,
+        )
 
 
 @router.delete(

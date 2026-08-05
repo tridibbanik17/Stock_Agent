@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 
 from app.models.schemas import MAX_SEND_TIMES
 from app.services.email_report import (
+    build_report_subject,
     build_unsubscribe_url,
     format_report_html,
     format_report_text,
@@ -406,7 +407,7 @@ def dispatch_user(
         report_day = preferred_local.date()
     else:
         report_day = _local_now(user_to_schedule(row), sent_at).date()
-    subject = f"Stock Agent Report - {report_day.isoformat()}"
+    subject = build_report_subject(report_day, quotes)
     text_body = format_report_text(email, quotes, unsubscribe_url=unsubscribe_url)
     html_body = format_report_html(email, quotes, unsubscribe_url=unsubscribe_url)
 

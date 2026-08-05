@@ -208,7 +208,7 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
     if score >= 4:
         grade = "STRONG_BUY"
         verdict = f"STRONG BUY ({score}/5)"
-        notes.insert(0, "Fundamentals align with momentum - look to add exposure.")
+        notes.insert(0, "Fundamentals align with momentum on the rule scorecard.")
     elif score == 3:
         grade = "HOLD"
         verdict = f"HOLD ({score}/5)"

@@ -160,6 +160,9 @@ def disable_subscription_by_token(token: str) -> dict[str, Any]:
         raise LookupError("No subscription found for that unsubscribe token")
 
     record = data[0] if isinstance(data, list) else data
+    # Trust the write intent if PostgREST omits the column somehow.
+    if record.get("enabled") is not False:
+        record = {**record, "enabled": False}
     logger.info(
         "Unsubscribed email=%s id=%s enabled=%s",
         record.get("email"),
@@ -168,6 +171,39 @@ def disable_subscription_by_token(token: str) -> dict[str, Any]:
     )
     return record
 
+
+def enable_subscription_by_token(token: str) -> dict[str, Any]:
+    """
+    Re-enable delivery (enabled=true) for the matching unsubscribe token.
+    Same proof-of-mailbox as unsubscribe (opaque token from the email link).
+    """
+    normalized = _normalize_token(token)
+    client = get_supabase()
+    try:
+        result = (
+            client.table("users")
+            .update({"enabled": True})
+            .eq("unsubscribe_token", normalized)
+            .execute()
+        )
+    except Exception:
+        logger.exception("Resubscribe update failed for token prefix=%s", normalized[:8])
+        raise
+
+    data = result.data or []
+    if not data:
+        raise LookupError("No subscription found for that unsubscribe token")
+
+    record = data[0] if isinstance(data, list) else data
+    if record.get("enabled") is not True:
+        record = {**record, "enabled": True}
+    logger.info(
+        "Resubscribed email=%s id=%s enabled=%s",
+        record.get("email"),
+        record.get("id"),
+        record.get("enabled"),
+    )
+    return record
 
 def upsert_user_subscription(payload: SubscribeRequest) -> dict[str, Any]:
     """
