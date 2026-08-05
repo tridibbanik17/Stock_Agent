@@ -71,6 +71,7 @@ const els = {
   sortRow: /** @type {HTMLElement} */ ($("sort-row")),
   refreshQuotes: /** @type {HTMLButtonElement} */ ($("refresh-quotes")),
   quotesUpdated: /** @type {HTMLElement} */ ($("quotes-updated")),
+  portfolioSummary: /** @type {HTMLElement} */ ($("portfolio-summary")),
   statusWatchlist: /** @type {HTMLElement} */ ($("status-watchlist")),
   statusWatchlistAdd: /** @type {HTMLElement} */ ($("status-watchlist-add")),
   statusSubscribe: /** @type {HTMLElement} */ ($("status-subscribe")),
@@ -817,6 +818,7 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     empty.className = "empty";
     empty.textContent = "No tickers yet — add a symbol to start.";
     els.watchlist.appendChild(empty);
+    updatePortfolioSummary([], {}, quotes);
     return;
   }
 
@@ -889,6 +891,8 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
 
     els.watchlist.appendChild(li);
   }
+
+  updatePortfolioSummary(watchlist, holdings, quotes);
 }
 
 async function rerenderWatchlist() {
@@ -954,6 +958,82 @@ function computePnL(lot, quote) {
     pnlPct: (pnl / cost) * 100,
     currency: String(quote?.currency || "USD"),
   };
+}
+
+/**
+ * Sum local lots by quote currency — never mixes CAD and USD without FX.
+ * @param {string[]} watchlist
+ * @param {Record<string, { shares?: number|null, buyPrice?: number|null }>} holdings
+ * @param {Record<string, QuoteSnapshot>} quotes
+ * @returns {Record<string, { value: number, cost: number, pnl: number, positions: number }>}
+ */
+function computePortfolioTotals(watchlist, holdings, quotes) {
+  /** @type {Record<string, { value: number, cost: number, pnl: number, positions: number }>} */
+  const byCur = {};
+  for (const ticker of watchlist || []) {
+    const stats = computePnL(holdings[ticker], quotes[ticker]);
+    if (!stats) continue;
+    const cur = stats.currency || "USD";
+    if (!byCur[cur]) {
+      byCur[cur] = { value: 0, cost: 0, pnl: 0, positions: 0 };
+    }
+    byCur[cur].value += stats.value;
+    byCur[cur].cost += stats.cost;
+    byCur[cur].pnl += stats.pnl;
+    byCur[cur].positions += 1;
+  }
+  return byCur;
+}
+
+/**
+ * Sticky banner: per-currency totals from on-device lots only.
+ * @param {string[]} watchlist
+ * @param {Record<string, { shares?: number|null, buyPrice?: number|null }>} holdings
+ * @param {Record<string, QuoteSnapshot>} quotes
+ */
+function updatePortfolioSummary(watchlist, holdings = {}, quotes = quoteCache) {
+  if (!els.portfolioSummary) return;
+  const byCur = computePortfolioTotals(watchlist, holdings, quotes);
+  const currencies = Object.keys(byCur).sort((a, b) => {
+    if (a === "USD") return -1;
+    if (b === "USD") return 1;
+    if (a === "CAD") return -1;
+    if (b === "CAD") return 1;
+    return a.localeCompare(b);
+  });
+
+  els.portfolioSummary.innerHTML = "";
+  if (!currencies.length) {
+    els.portfolioSummary.hidden = true;
+    return;
+  }
+
+  els.portfolioSummary.hidden = false;
+
+  const label = document.createElement("div");
+  label.className = "portfolio-summary-label";
+  label.textContent = "Portfolio (local lots)";
+  els.portfolioSummary.appendChild(label);
+
+  for (const cur of currencies) {
+    const t = byCur[cur];
+    const pct = t.cost > 0 ? (t.pnl / t.cost) * 100 : 0;
+    const sign = t.pnl >= 0 ? "+" : "−";
+    const row = document.createElement("div");
+    row.className =
+      "portfolio-summary-row" + (t.pnl >= 0 ? " is-gain" : " is-loss");
+    row.textContent =
+      `${cur}  Value ${formatPrice(t.value)} · ` +
+      `Profit/loss ${sign}${formatPrice(Math.abs(t.pnl))} (${sign}${Math.abs(pct).toFixed(1)}%)`;
+    els.portfolioSummary.appendChild(row);
+  }
+
+  if (currencies.length > 1) {
+    const note = document.createElement("p");
+    note.className = "portfolio-summary-note";
+    note.textContent = "CAD and USD kept separate — no FX conversion.";
+    els.portfolioSummary.appendChild(note);
+  }
 }
 
 /**
@@ -1643,6 +1723,8 @@ async function persistHoldingsFromDom(focusTicker = null) {
   for (const ticker of Object.keys(merged)) {
     patchPnL(ticker, merged[ticker] || {}, quoteCache[ticker]);
   }
+  const state = await getLocalState();
+  updatePortfolioSummary(state.watchlist, merged, quoteCache);
   if (focusTicker) showLotsSavedFlash(focusTicker);
 }
 

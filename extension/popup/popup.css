@@ -118,6 +118,53 @@ body {
   gap: 10px;
 }
 
+.portfolio-summary {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #2a4a5c;
+  background: linear-gradient(180deg, #1a2836 0%, #151e28 100%);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.portfolio-summary[hidden] {
+  display: none !important;
+}
+
+.portfolio-summary-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.portfolio-summary-row {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.portfolio-summary-row.is-gain {
+  color: #7dcea0;
+}
+
+.portfolio-summary-row.is-loss {
+  color: #e89a9a;
+}
+
+.portfolio-summary-note {
+  margin: 2px 0 0;
+  font-size: 0.62rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
 .refresh-wrap {
   display: flex;
   align-items: center;
