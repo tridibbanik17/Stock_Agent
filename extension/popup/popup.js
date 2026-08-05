@@ -72,6 +72,7 @@ const els = {
   refreshQuotes: /** @type {HTMLButtonElement} */ ($("refresh-quotes")),
   quotesUpdated: /** @type {HTMLElement} */ ($("quotes-updated")),
   statusWatchlist: /** @type {HTMLElement} */ ($("status-watchlist")),
+  statusWatchlistAdd: /** @type {HTMLElement} */ ($("status-watchlist-add")),
   statusSubscribe: /** @type {HTMLElement} */ ($("status-subscribe")),
   statusAi: /** @type {HTMLElement} */ ($("status-ai")),
   statusGlobal: /** @type {HTMLElement} */ ($("status-global")),
@@ -121,7 +122,7 @@ let suggestActiveIndex = -1;
  * }} QuoteSnapshot
  */
 
-/** @typedef {'watchlist'|'subscribe'|'ai'|'global'} StatusSection */
+/** @typedef {'watchlist'|'watchlistAdd'|'subscribe'|'ai'|'global'} StatusSection */
 /**
  * transient  — action logs; auto-hide after 3s with fade
  * persistent — config success; stays until the next user action
@@ -185,7 +186,7 @@ function bindEvents() {
     }
   });
   els.tickerInput.addEventListener("input", () => {
-    clearStatus("watchlist");
+    clearStatus("watchlistAdd");
     void updateTickerSuggest();
   });
   els.tickerInput.addEventListener("focus", () => {
@@ -335,6 +336,7 @@ function setStatus(
 
   for (const key of /** @type {StatusSection[]} */ ([
     "watchlist",
+    "watchlistAdd",
     "subscribe",
     "ai",
     "global",
@@ -381,6 +383,7 @@ function showTransientToast(
 
   for (const key of /** @type {StatusSection[]} */ ([
     "watchlist",
+    "watchlistAdd",
     "subscribe",
     "ai",
     "global",
@@ -439,6 +442,7 @@ function clearToastTimers() {
 /** @param {StatusSection} section */
 function statusEl(section) {
   if (section === "watchlist") return els.statusWatchlist;
+  if (section === "watchlistAdd") return els.statusWatchlistAdd;
   if (section === "subscribe") return els.statusSubscribe;
   if (section === "ai") return els.statusAi;
   return els.statusGlobal;
@@ -1496,7 +1500,7 @@ async function updateTickerSuggest() {
 async function onAddTicker() {
   const ticker = els.tickerInput.value.trim().toUpperCase();
   if (!ticker) {
-    setStatus("Enter a ticker symbol first.", "warn", "watchlist", "error");
+    setStatus("Enter a ticker symbol first.", "warn", "watchlistAdd", "error");
     return;
   }
 
@@ -1504,14 +1508,14 @@ async function onAddTicker() {
   const watchlist = [...state.watchlist];
 
   if (watchlist.includes(ticker)) {
-    setStatus(`${ticker} is already on your watchlist.`, "warn", "watchlist", "error");
+    setStatus(`${ticker} is already on your watchlist.`, "warn", "watchlistAdd", "error");
     return;
   }
   if (watchlist.length >= MAX_WATCHLIST) {
     setStatus(
       `Watchlist capped at ${MAX_WATCHLIST} tickers.`,
       "warn",
-      "watchlist",
+      "watchlistAdd",
       "error"
     );
     return;
@@ -1522,7 +1526,7 @@ async function onAddTicker() {
   els.tickerInput.value = "";
   els.tickerInput.focus();
   renderWatchlist(result.watchlist, result.holdings, quoteCache);
-  setStatus(`Added ${ticker}.`, "ok", "watchlist", "transient");
+  setStatus(`Added ${ticker}.`, "ok", "watchlistAdd", "transient");
   // Only fetch the new symbol — keep cached quotes for the rest.
   void refreshQuotes({ quiet: true, tickers: [ticker] });
 }
