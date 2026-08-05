@@ -801,7 +801,8 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     const shares = document.createElement("input");
     shares.type = "number";
     shares.min = "0";
-    shares.step = "any";
+    shares.step = "0.0001";
+    shares.inputMode = "decimal";
     shares.placeholder = "0";
     shares.title = "Number of shares owned (private)";
     shares.setAttribute("aria-label", `${ticker} number of shares owned`);
@@ -813,7 +814,8 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     const buyPrice = document.createElement("input");
     buyPrice.type = "number";
     buyPrice.min = "0";
-    buyPrice.step = "any";
+    buyPrice.step = "0.01";
+    buyPrice.inputMode = "decimal";
     buyPrice.placeholder = "0.00";
     buyPrice.title = "Average buy price (private)";
     buyPrice.setAttribute("aria-label", `${ticker} average buy price`);
@@ -932,8 +934,33 @@ function buildPnLNode(lot, quote) {
   el.classList.add(stats.pnl >= 0 ? "is-gain" : "is-loss");
   el.textContent =
     `Value ${formatPrice(stats.value)} ${stats.currency} · ` +
-    `P&L ${sign}${formatPrice(absPnl)} (${sign}${absPct.toFixed(1)}%)`;
+    `Profit/loss ${sign}${formatPrice(absPnl)} (${sign}${absPct.toFixed(1)}%)`;
   return el;
+}
+
+/**
+ * Update one card's P&L line without rebuilding inputs (preserves decimal typing).
+ * @param {string} ticker
+ * @param {{ shares?: number|null, buyPrice?: number|null }} lot
+ * @param {QuoteSnapshot|null|undefined} quote
+ */
+function patchPnL(ticker, lot, quote) {
+  const card = els.watchlist.querySelector(
+    `.ticker-card[data-ticker="${CSS.escape(ticker)}"]`
+  );
+  if (!(card instanceof HTMLElement)) return;
+  const existing = card.querySelector(".position-pnl");
+  const next = buildPnLNode(lot, quote);
+  if (!next) {
+    existing?.remove();
+    return;
+  }
+  if (existing) existing.replaceWith(next);
+  else {
+    const ai = card.querySelector(".ai-blurb");
+    if (ai) card.insertBefore(next, ai);
+    else card.appendChild(next);
+  }
 }
 
 /**
@@ -1481,8 +1508,10 @@ async function persistHoldingsFromDom() {
   const existing = await getHoldings();
   const merged = { ...existing, ...holdings };
   await setHoldings(merged);
-  const state = await getLocalState();
-  renderWatchlist(state.watchlist, merged, quoteCache);
+  // Patch P&L only — full re-render would wipe in-progress decimals like "29.".
+  for (const ticker of Object.keys(merged)) {
+    patchPnL(ticker, merged[ticker] || {}, quoteCache[ticker]);
+  }
   setStatus("Private lots saved on this device only.", "ok", "watchlist", "transient");
 }
 
