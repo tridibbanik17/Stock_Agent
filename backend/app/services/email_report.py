@@ -74,6 +74,13 @@ def build_unsubscribe_url(token: str, base_url: str | None = None) -> str:
     return f"{base}/api/unsubscribe?token={quote(str(token), safe='')}"
 
 
+LEGAL_DISCLAIMER = (
+    "Educational tool only. Ratings are calculated via rule-based "
+    "technical/fundamental heuristics and do not constitute financial advice. "
+    "Past performance does not guarantee future results."
+)
+
+
 def _metric_glossary() -> list[str]:
     """Short plain-language footer — keep email scannable."""
     return [
@@ -84,8 +91,45 @@ def _metric_glossary() -> list[str]:
         "RSI = momentum (0-100). 200-SMA = long-term trend.",
         "Grades use rules plus headline risk flags only.",
         "Privacy: tickers only - never share counts or buy prices.",
-        "Not investment advice; do your own research.",
+        "",
+        "DISCLAIMER",
+        "-" * 46,
+        LEGAL_DISCLAIMER,
     ]
+
+
+def _grade_bucket(q: dict[str, Any]) -> str:
+    """avoid | hold | buy — for urgency-sorted email sections."""
+    g = quote_grade(q)
+    if g == "STRONG_BUY":
+        return "buy"
+    if g == "HOLD":
+        return "hold"
+    return "avoid"
+
+
+def _quotes_by_urgency(quotes: list[dict[str, Any]]) -> list[tuple[str, str, list[dict[str, Any]]]]:
+    """
+    Group watchlist into Avoid → Hold → Buy for scannable digests.
+    Returns [(bucket_key, section_title, quotes), ...] omitting empty buckets.
+    """
+    buckets: dict[str, list[dict[str, Any]]] = {
+        "avoid": [],
+        "hold": [],
+        "buy": [],
+    }
+    for q in quotes:
+        buckets[_grade_bucket(q)].append(q)
+    titles = {
+        "avoid": "Action / Avoid (0–2)",
+        "hold": "Watch / Hold (3)",
+        "buy": "Buy opportunities (4–5)",
+    }
+    out: list[tuple[str, str, list[dict[str, Any]]]] = []
+    for key in ("avoid", "hold", "buy"):
+        if buckets[key]:
+            out.append((key, titles[key], buckets[key]))
+    return out
 
 
 def format_report_text(
@@ -99,34 +143,38 @@ def format_report_text(
         _grade_summary_line(quotes),
         "",
     ]
-    for q in quotes:
-        ticker = _plain_ticker(q.get("ticker", "?"))
-        price = q.get("price")
-        currency = q.get("currency") or "USD"
-        price_s = f"{price:.2f} {currency}" if isinstance(price, (int, float)) else "n/a"
-        lines.append(f"* {ticker}")
-        lines.append(f"  - Price: {price_s}")
-        lines.append(f"  - Grade: {q.get('verdict') or q.get('grade') or 'n/a'}")
-        lines.append(f"  - Debt-to-Equity: {q.get('deRatio') if q.get('deRatio') is not None else 'n/a'}")
-        lines.append(f"  - PEG: {q.get('pegRatio') if q.get('pegRatio') is not None else 'n/a'}")
-        lines.append(f"  - ROE trend: {q.get('roeTrend', [])}")
-        lines.append(
-            f"  - Above 200-SMA: {q.get('aboveSma200') if q.get('aboveSma200') is not None else 'n/a'} "
-            f"(SMA: {q.get('sma200') if q.get('sma200') is not None else 'n/a'})"
-        )
-        lines.append(f"  - RSI: {q.get('rsi') if q.get('rsi') is not None else 'n/a'}")
-        lines.append(f"  - Asset class: {q.get('assetClass', 'standard')}")
-        notes = q.get("notes") or []
-        if notes:
-            lines.append("  - Notes:")
-            for text, link in _note_lines_for_email(q):
-                if link:
-                    lines.append(f"     - {text}")
-                    lines.append(f"       Read: {link}")
-                else:
-                    lines.append(f"     - {text}")
-        if q.get("error"):
-            lines.append(f"  - Data warning: {q['error']}")
+    for _key, title, group in _quotes_by_urgency(quotes):
+        lines.append(title.upper())
+        lines.append("-" * 46)
+        for q in group:
+            ticker = _plain_ticker(q.get("ticker", "?"))
+            price = q.get("price")
+            currency = q.get("currency") or "USD"
+            price_s = f"{price:.2f} {currency}" if isinstance(price, (int, float)) else "n/a"
+            lines.append(f"* {ticker}")
+            lines.append(f"  - Price: {price_s}")
+            lines.append(f"  - Grade: {q.get('verdict') or q.get('grade') or 'n/a'}")
+            lines.append(f"  - Debt-to-Equity: {q.get('deRatio') if q.get('deRatio') is not None else 'n/a'}")
+            lines.append(f"  - PEG: {q.get('pegRatio') if q.get('pegRatio') is not None else 'n/a'}")
+            lines.append(f"  - ROE trend: {q.get('roeTrend', [])}")
+            lines.append(
+                f"  - Above 200-SMA: {q.get('aboveSma200') if q.get('aboveSma200') is not None else 'n/a'} "
+                f"(SMA: {q.get('sma200') if q.get('sma200') is not None else 'n/a'})"
+            )
+            lines.append(f"  - RSI: {q.get('rsi') if q.get('rsi') is not None else 'n/a'}")
+            lines.append(f"  - Asset class: {q.get('assetClass', 'standard')}")
+            notes = q.get("notes") or []
+            if notes:
+                lines.append("  - Notes:")
+                for text, link in _note_lines_for_email(q):
+                    if link:
+                        lines.append(f"     - {text}")
+                        lines.append(f"       Read: {link}")
+                    else:
+                        lines.append(f"     - {text}")
+            if q.get("error"):
+                lines.append(f"  - Data warning: {q['error']}")
+            lines.append("")
         lines.append("")
 
     lines.extend(_metric_glossary())
@@ -312,59 +360,76 @@ def format_report_html(
             f"</p>"
         )
 
-    card_rows = []
-    for q in quotes:
-        ticker = _plain_ticker(q.get("ticker", "?"))
-        grade = quote_grade(q)
-        verdict = q.get("verdict") or grade
-        price = q.get("price")
-        currency = q.get("currency") or "USD"
-        price_s = f"{price:.2f} {currency}" if isinstance(price, (int, float)) else "n/a"
-        notes = q.get("notes") or []
-        notes_html = ""
-        if notes and not no_change_digest:
-            items_html = []
-            for text, link in _note_lines_for_email(q)[:4]:
-                if link:
-                    items_html.append(
-                        f"<li>{_esc(text)} "
-                        f"<a href='{_esc(link)}' style='color:#2563eb;'>Read</a></li>"
-                    )
-                else:
-                    items_html.append(f"<li>{_esc(text)}</li>")
-            notes_html = (
-                "<ul style='margin:6px 0 0;padding-left:18px;color:#475569;font-size:12px;'>"
-                + "".join(items_html)
-                + "</ul>"
+    card_sections: list[str] = []
+    for _key, section_title, group in _quotes_by_urgency(quotes):
+        section_rows: list[str] = []
+        for q in group:
+            ticker = _plain_ticker(q.get("ticker", "?"))
+            grade = quote_grade(q)
+            verdict = q.get("verdict") or grade
+            price = q.get("price")
+            currency = q.get("currency") or "USD"
+            price_s = (
+                f"{price:.2f} {currency}" if isinstance(price, (int, float)) else "n/a"
             )
-        metrics = ""
-        if not no_change_digest:
-            metrics = f"""
-            <p style="margin:8px 0 0;font-size:12px;color:#64748b;line-height:1.45;">
-              D/E {_esc(q.get('deRatio', 'N/A'))}
-              · PEG {_esc(q.get('pegRatio', 'N/A'))}
-              · RSI {_esc(q.get('rsi', 'N/A'))}
-              · Above 200-SMA {_esc(_human_bool(q.get('aboveSma200')))}
-              · {_esc(_human_asset_class(q.get('assetClass')))}
-            </p>
-            """
-        card_rows.append(
+            notes_html = ""
+            if not no_change_digest and (q.get("notes") or []):
+                items_html = []
+                for text, link in _note_lines_for_email(q)[:4]:
+                    if link:
+                        items_html.append(
+                            f"<li>{_esc(text)} "
+                            f"<a href='{_esc(link)}' style='color:#2563eb;'>Read</a></li>"
+                        )
+                    else:
+                        items_html.append(f"<li>{_esc(text)}</li>")
+                notes_html = (
+                    "<ul style='margin:6px 0 0;padding-left:18px;color:#475569;font-size:12px;'>"
+                    + "".join(items_html)
+                    + "</ul>"
+                )
+            metrics = ""
+            if not no_change_digest:
+                metrics = f"""
+                <p style="margin:8px 0 0;font-size:12px;color:#64748b;line-height:1.45;">
+                  D/E {_esc(q.get('deRatio', 'N/A'))}
+                  · PEG {_esc(q.get('pegRatio', 'N/A'))}
+                  · RSI {_esc(q.get('rsi', 'N/A'))}
+                  · Above 200-SMA {_esc(_human_bool(q.get('aboveSma200')))}
+                  · {_esc(_human_asset_class(q.get('assetClass')))}
+                </p>
+                """
+            section_rows.append(
+                f"""
+                <tr>
+                  <td style="padding:14px 0;border-bottom:1px solid #e2e8f0;">
+                    <div style="font-family:Consolas,monospace;font-size:15px;font-weight:700;color:#0f172a;">
+                      {_esc(ticker)}
+                      <span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:4px;background:{_grade_color(grade)};color:#fff;font-size:11px;font-weight:700;">
+                        {_esc(verdict)}
+                      </span>
+                    </div>
+                    <div style="margin-top:4px;font-size:13px;color:#334155;">Price: {_esc(price_s)}</div>
+                    {metrics}
+                    {notes_html}
+                  </td>
+                </tr>
+                """
+            )
+        card_sections.append(
             f"""
-            <tr>
-              <td style="padding:14px 0;border-bottom:1px solid #e2e8f0;">
-                <div style="font-family:Consolas,monospace;font-size:15px;font-weight:700;color:#0f172a;">
-                  {_esc(ticker)}
-                  <span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:4px;background:{_grade_color(grade)};color:#fff;font-size:11px;font-weight:700;">
-                    {_esc(verdict)}
-                  </span>
-                </div>
-                <div style="margin-top:4px;font-size:13px;color:#334155;">Price: {_esc(price_s)}</div>
-                {metrics}
-                {notes_html}
-              </td>
-            </tr>
+            <h2 style="font-size:15px;margin:22px 0 6px;color:#0c1117;">{_esc(section_title)}</h2>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              {''.join(section_rows)}
+            </table>
             """
         )
+
+    quotes_block = (
+        "".join(card_sections)
+        if card_sections
+        else '<p style="color:#64748b;">No tickers in this report.</p>'
+    )
 
     unsub = ""
     if unsubscribe_url:
@@ -377,15 +442,21 @@ def format_report_html(
 
     glossary = ""
     if not no_change_digest:
-        glossary = """
+        glossary = f"""
         <h2 style="font-size:14px;margin:28px 0 8px;color:#0c1117;">Metric guide</h2>
         <p style="margin:0;font-size:12px;color:#64748b;line-height:1.55;">
           Grade 4–5 = STRONG BUY, 3 = HOLD, 0–2 = AVOID.
           D/E = debt vs equity. PEG = valuation vs growth. RSI = momentum (0–100).
           200-SMA = long-term trend. Grades use rules plus headline risk flags only.
-          Not investment advice.
         </p>
         """
+
+    legal = f"""
+    <p style="margin:16px 0 0;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;color:#64748b;line-height:1.55;">
+      {_esc(LEGAL_DISCLAIMER)}
+    </p>
+    <p style="margin:12px 0 0;font-size:11px;color:#94a3b8;">Privacy: tickers only — never your share counts or buy prices.</p>
+    """
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -402,12 +473,10 @@ def format_report_html(
               {intro}
               {summary_html}
               {change_block}
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                {''.join(card_rows) if card_rows else '<tr><td style="color:#64748b;">No tickers in this report.</td></tr>'}
-              </table>
+              {quotes_block}
               {glossary}
               {unsub}
-              <p style="margin:16px 0 0;font-size:11px;color:#94a3b8;">Privacy: tickers only — never your share counts or buy prices.</p>
+              {legal}
             </td>
           </tr>
         </table>
@@ -437,6 +506,7 @@ def format_no_change_text(
             f"* {_plain_ticker(q.get('ticker', '?'))}: "
             f"{q.get('verdict') or quote_grade(q)}"
         )
+    lines.extend(["", "DISCLAIMER", "-" * 46, LEGAL_DISCLAIMER])
     if unsubscribe_url:
         lines.extend(["", "Unsubscribe:", unsubscribe_url])
     return "\n".join(lines)

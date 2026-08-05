@@ -954,3 +954,14 @@ button.preset-chip.is-active {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 22%, #0e141b);
 }
+
+.legal-disclaimer {
+  margin: 14px 0 4px;
+  padding: 10px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #121820;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: #8b9aab;
+}
