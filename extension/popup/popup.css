@@ -704,6 +704,27 @@ button.remove:hover {
   border-color: #334455;
 }
 
+.ticker-removed-flash {
+  list-style: none;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid #2a4a3a;
+  font-size: 0.72rem;
+  color: #7dcea0;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.ticker-removed-flash.is-visible {
+  opacity: 1;
+}
+
+.ticker-removed-flash.is-fading-out {
+  opacity: 0;
+}
+
 .ticker-row {
   display: grid;
   grid-template-columns: 58px 1fr 1fr 58px;

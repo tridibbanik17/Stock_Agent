@@ -1535,13 +1535,57 @@ async function onAddTicker() {
  * @param {string} ticker
  */
 async function onRemoveTicker(ticker) {
+  const card = els.watchlist.querySelector(
+    `.ticker-card[data-ticker="${CSS.escape(ticker)}"]`
+  );
+  const removeIndex = card
+    ? [...els.watchlist.children].indexOf(card)
+    : -1;
+
   const state = await getLocalState();
   const watchlist = state.watchlist.filter((item) => item !== ticker);
   const result = await setWatchlist(watchlist);
   delete quoteCache[ticker];
   delete aiExplainCache[ticker];
   renderWatchlist(result.watchlist, result.holdings, quoteCache);
-  setStatus(`Removed ${ticker}.`, "ok", "watchlist", "transient");
+  showRemovedFlash(ticker, removeIndex);
+}
+
+/**
+ * Brief confirmation in the slot the ticker occupied (not under the whole list).
+ * @param {string} ticker
+ * @param {number} index
+ */
+function showRemovedFlash(ticker, index) {
+  els.watchlist
+    .querySelectorAll(".ticker-removed-flash")
+    .forEach((el) => el.remove());
+
+  const flash = document.createElement("li");
+  flash.className = "ticker-removed-flash";
+  flash.setAttribute("role", "status");
+  flash.textContent = `Removed ${ticker}.`;
+
+  const cards = [...els.watchlist.querySelectorAll(".ticker-card")];
+  const empty = els.watchlist.querySelector("li.empty");
+
+  if (index >= 0 && index < cards.length) {
+    els.watchlist.insertBefore(flash, cards[index]);
+  } else if (cards.length && index >= cards.length) {
+    els.watchlist.appendChild(flash);
+  } else if (empty) {
+    els.watchlist.insertBefore(flash, empty);
+  } else {
+    els.watchlist.appendChild(flash);
+  }
+
+  flash.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  requestAnimationFrame(() => flash.classList.add("is-visible"));
+
+  window.setTimeout(() => {
+    flash.classList.add("is-fading-out");
+    window.setTimeout(() => flash.remove(), 280);
+  }, 2200);
 }
 
 // ---------------------------------------------------------------------------
