@@ -24,6 +24,7 @@ import {
   getHoldings,
   getLocalState,
   getCachedQuotes,
+  getCachedQuotesFetchedAt,
   joinTimeParts,
   normalizeSchedule,
   setDelivery,
@@ -84,6 +85,8 @@ let quotesLoading = false;
 let quotesPending = /** @type {Set<string>} */ (new Set());
 /** When quotes were last successfully refreshed (local clock). */
 let quotesUpdatedAt = /** @type {Date|null} */ (null);
+/** Skip auto-refresh on popup reopen if cache is newer than this. */
+const QUOTE_FRESH_MS = 2 * 60 * 1000;
 /** @type {'symbol'|'grade'|'pnl'} */
 let watchlistSort = "symbol";
 /**
@@ -145,8 +148,8 @@ init().catch((error) => {
 async function init() {
   bindEvents();
   await hydrateFromStorage();
-  // Live prices after local hydrate (non-blocking UX if API is down).
-  void refreshQuotes({ quiet: true });
+  // Reuse local cache on quick reopen; only fetch when stale or incomplete.
+  void maybeAutoRefreshQuotes();
   window.setInterval(() => updateQuotesUpdatedLabel(), 30_000);
 }
 
@@ -459,14 +462,43 @@ async function hydrateFromStorage() {
 
   // Show last stable grades immediately so a cold Yahoo fetch doesn't flash low scores.
   quoteCache = await getCachedQuotes();
-  const asOfTimes = Object.values(quoteCache)
-    .map((q) => (q?.asOf ? Date.parse(String(q.asOf)) : NaN))
-    .filter((t) => Number.isFinite(t));
-  if (asOfTimes.length) {
-    quotesUpdatedAt = new Date(Math.max(...asOfTimes));
+  quotesUpdatedAt = await getCachedQuotesFetchedAt();
+  if (!quotesUpdatedAt) {
+    const asOfTimes = Object.values(quoteCache)
+      .map((q) => (q?.asOf ? Date.parse(String(q.asOf)) : NaN))
+      .filter((t) => Number.isFinite(t));
+    if (asOfTimes.length) {
+      quotesUpdatedAt = new Date(Math.max(...asOfTimes));
+    }
   }
   updateQuotesUpdatedLabel();
   renderWatchlist(state.watchlist, state.holdings, quoteCache);
+}
+
+/**
+ * On popup open: show cache, fetch only if missing tickers or cache is stale.
+ * Manual Refresh always forces a full update.
+ */
+async function maybeAutoRefreshQuotes() {
+  const state = await getLocalState();
+  const watchlist = state.watchlist || [];
+  if (!watchlist.length) return;
+
+  const missing = watchlist.filter((ticker) => {
+    const q = quoteCache[ticker];
+    return !q || (q.price == null && !q.error);
+  });
+  if (missing.length) {
+    void refreshQuotes({ quiet: true, tickers: missing });
+    return;
+  }
+
+  const ageMs = quotesUpdatedAt
+    ? Date.now() - quotesUpdatedAt.getTime()
+    : Number.POSITIVE_INFINITY;
+  if (ageMs < QUOTE_FRESH_MS) return;
+
+  void refreshQuotes({ quiet: true });
 }
 
 function updateQuotesUpdatedLabel() {
@@ -1100,14 +1132,35 @@ function mergeQuoteSnapshot(prev, next) {
   return next;
 }
 
+/** Serialize quote refreshes so add/refresh don't race the pending set. */
+let quotesRefreshChain = Promise.resolve();
+
 /**
  * Fetch live yfinance snapshot + grades one ticker at a time (progressive UI).
- * @param {{ quiet?: boolean }} [opts]
+ * Pass `tickers` to refresh only those symbols (e.g. after Add Ticker).
+ * @param {{ quiet?: boolean, tickers?: string[] }} [opts]
  */
-async function refreshQuotes(opts = {}) {
+function refreshQuotes(opts = {}) {
+  const run = () => refreshQuotesInternal(opts);
+  const next = quotesRefreshChain.then(run, run);
+  quotesRefreshChain = next.catch(() => {});
+  return next;
+}
+
+/**
+ * @param {{ quiet?: boolean, tickers?: string[] }} [opts]
+ */
+async function refreshQuotesInternal(opts = {}) {
   const quiet = Boolean(opts.quiet);
+  const onlyTickers = Array.isArray(opts.tickers)
+    ? opts.tickers.map((t) => String(t || "").trim().toUpperCase()).filter(Boolean)
+    : null;
   const state = await getLocalState();
   const watchlist = state.watchlist || [];
+  const isPartial = Boolean(onlyTickers?.length);
+  const targets = isPartial
+    ? onlyTickers.filter((t) => watchlist.includes(t))
+    : watchlist.slice();
 
   if (!watchlist.length) {
     quoteCache = {};
@@ -1120,34 +1173,50 @@ async function refreshQuotes(opts = {}) {
     return;
   }
 
-  quotesLoading = true;
-  quotesPending = new Set(watchlist);
-  // Grades may change on refresh — clear AI blurbs so Explain runs fresh.
-  aiExplainCache = {};
-  aiExplainGeneration += 1;
-  updateExplainButtonLabel(0);
-  els.refreshQuotes.disabled = true;
-  els.refreshQuotes.classList.add("is-loading");
-  els.refreshQuotes.setAttribute("aria-busy", "true");
-  els.refreshQuotes.textContent = "Loading…";
+  if (!targets.length) return;
+
+  if (!isPartial) {
+    quotesLoading = true;
+    // Full refresh may change grades — clear AI blurbs so Explain runs fresh.
+    aiExplainCache = {};
+    aiExplainGeneration += 1;
+    updateExplainButtonLabel(0);
+    els.refreshQuotes.disabled = true;
+    els.refreshQuotes.classList.add("is-loading");
+    els.refreshQuotes.setAttribute("aria-busy", "true");
+    els.refreshQuotes.textContent = "Loading…";
+    quotesPending = new Set(targets);
+  } else {
+    for (const t of targets) {
+      quotesPending.add(t);
+      delete aiExplainCache[t];
+    }
+  }
+
   renderWatchlist(watchlist, state.holdings, quoteCache);
-  setStatus(
-    `Fetching 1 / ${watchlist.length}…`,
-    "info",
-    "watchlist",
-    "persistent"
-  );
+  if (!quiet) {
+    setStatus(
+      isPartial
+        ? `Fetching ${targets[0]}…`
+        : `Fetching 1 / ${targets.length}…`,
+      "info",
+      "watchlist",
+      "persistent"
+    );
+  }
 
   let okCount = 0;
   try {
-    for (let i = 0; i < watchlist.length; i += 1) {
-      const ticker = watchlist[i];
-      setStatus(
-        `Fetching ${ticker} (${i + 1} / ${watchlist.length})…`,
-        "info",
-        "watchlist",
-        "persistent"
-      );
+    for (let i = 0; i < targets.length; i += 1) {
+      const ticker = targets[i];
+      if (!quiet) {
+        setStatus(
+          `Fetching ${ticker} (${i + 1} / ${targets.length})…`,
+          "info",
+          "watchlist",
+          "persistent"
+        );
+      }
       try {
         const data = await fetchWatchlistSnapshot([ticker]);
         const quote = (data?.quotes || []).find((q) => q?.ticker === ticker) ||
@@ -1181,19 +1250,28 @@ async function refreshQuotes(opts = {}) {
     quotesUpdatedAt = new Date();
     updateQuotesUpdatedLabel();
 
-    setStatus(
-      `Updated ${okCount} quote${okCount === 1 ? "" : "s"}.`,
-      "ok",
-      "watchlist",
-      "transient"
-    );
+    if (!quiet || isPartial) {
+      setStatus(
+        isPartial
+          ? okCount
+            ? `Updated ${targets[0]}.`
+            : `Could not update ${targets[0]}.`
+          : `Updated ${okCount} quote${okCount === 1 ? "" : "s"}.`,
+        okCount ? "ok" : "warn",
+        "watchlist",
+        "transient"
+      );
+    }
   } finally {
-    quotesLoading = false;
-    quotesPending = new Set();
-    els.refreshQuotes.disabled = false;
-    els.refreshQuotes.classList.remove("is-loading");
-    els.refreshQuotes.removeAttribute("aria-busy");
-    els.refreshQuotes.textContent = "Refresh";
+    for (const t of targets) quotesPending.delete(t);
+    if (!isPartial) {
+      quotesLoading = false;
+      quotesPending = new Set();
+      els.refreshQuotes.disabled = false;
+      els.refreshQuotes.classList.remove("is-loading");
+      els.refreshQuotes.removeAttribute("aria-busy");
+      els.refreshQuotes.textContent = "Refresh";
+    }
     renderWatchlist(watchlist, state.holdings, quoteCache);
   }
 }
@@ -1445,7 +1523,8 @@ async function onAddTicker() {
   els.tickerInput.focus();
   renderWatchlist(result.watchlist, result.holdings, quoteCache);
   setStatus(`Added ${ticker}.`, "ok", "watchlist", "transient");
-  void refreshQuotes({ quiet: true });
+  // Only fetch the new symbol — keep cached quotes for the rest.
+  void refreshQuotes({ quiet: true, tickers: [ticker] });
 }
 
 /**

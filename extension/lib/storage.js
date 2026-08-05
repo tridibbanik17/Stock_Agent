@@ -592,6 +592,18 @@ export async function getCachedQuotes() {
 }
 
 /**
+ * When the local quote snapshot was last written (extension clock).
+ * @returns {Promise<Date|null>}
+ */
+export async function getCachedQuotesFetchedAt() {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.quoteSnapshot);
+  const raw = result[STORAGE_KEYS.quoteSnapshot];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const at = Date.parse(String(raw.at || ""));
+  return Number.isFinite(at) ? new Date(at) : null;
+}
+
+/**
  * @param {Record<string, Record<string, unknown>>} quotes
  * @returns {Promise<void>}
  */
