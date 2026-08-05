@@ -1023,8 +1023,8 @@ function updatePortfolioSummary(watchlist, holdings = {}, quotes = quoteCache) {
     row.className =
       "portfolio-summary-row" + (t.pnl >= 0 ? " is-gain" : " is-loss");
     row.textContent =
-      `${cur}  Value ${formatPrice(t.value)} · ` +
-      `Profit/loss ${sign}${formatPrice(Math.abs(t.pnl))} (${sign}${Math.abs(pct).toFixed(1)}%)`;
+      `${cur}  Value ${formatMoney(t.value)} · ` +
+      `Profit/loss ${sign}${formatMoney(Math.abs(t.pnl))} (${sign}${Math.abs(pct).toFixed(1)}%)`;
     els.portfolioSummary.appendChild(row);
   }
 
@@ -1051,8 +1051,8 @@ function buildPnLNode(lot, quote) {
   const absPct = Math.abs(stats.pnlPct);
   el.classList.add(stats.pnl >= 0 ? "is-gain" : "is-loss");
   el.textContent =
-    `Value ${formatPrice(stats.value)} ${stats.currency} · ` +
-    `Profit/loss ${sign}${formatPrice(absPnl)} (${sign}${absPct.toFixed(1)}%)`;
+    `Value ${formatMoney(stats.value)} ${stats.currency} · ` +
+    `Profit/loss ${sign}${formatMoney(absPnl)} (${sign}${absPct.toFixed(1)}%)`;
   return el;
 }
 
