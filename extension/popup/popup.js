@@ -1649,7 +1649,7 @@ async function onAddTicker() {
     els.tickerInput.value = ticker;
     els.tickerInput.focus();
     setStatus(
-      `${ticker} isn’t a valid tradeable symbol (no live price). Not added — check the spelling (TSX often needs .TO).`,
+      `${ticker} isn’t a valid tradeable symbol (no live price). Not added — check the spelling.`,
       "warn",
       "watchlistAdd",
       "error"
