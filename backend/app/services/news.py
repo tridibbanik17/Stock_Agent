@@ -46,6 +46,21 @@ TRUSTED_DOMAINS = {
     "www.finance.yahoo.com",
     "yahoo.com",
     "www.yahoo.com",
+    # Indian financial media
+    "economictimes.indiatimes.com",
+    "www.economictimes.indiatimes.com",
+    "livemint.com",
+    "www.livemint.com",
+    "business-standard.com",
+    "www.business-standard.com",
+    "moneycontrol.com",
+    "www.moneycontrol.com",
+    "financialexpress.com",
+    "www.financialexpress.com",
+    "ndtvprofit.com",
+    "www.ndtvprofit.com",
+    "thehinduBusinessline.com",
+    "www.thehindubusinessline.com",
 }
 
 RISK_KEYWORDS = (
@@ -64,9 +79,31 @@ RISK_KEYWORDS = (
     "downgrade",
     "default",
     "insolvency",
+    # Indian regulatory / enforcement keywords
+    "sebi",
+    "enforcement directorate",
+    "ed probe",
+    "ed raid",
+    "cbi",
+    "income tax raid",
+    "it raid",
+    "nse notice",
+    "bse notice",
+    "nse penalty",
+    "bse penalty",
+    "cci probe",
+    "rbi penalty",
+    "rbi action",
+    "nclt",
+    "rera",
+    "pmla",
+    "money laundering",
+    "promoter pledge",
 )
 
-_TICKER_SAFE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,11}$")
+# Must match schemas.py TICKER_RE — covers long Indian tickers like
+# ADANIENTERPRISES.NS (19 chars) and numeric BSE codes like 500325.BO.
+_TICKER_SAFE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,18}$")
 _USER_AGENT = (
     "StockAgent/1.0 (+https://github.com; cron headline fetch; contact: local)"
 )
@@ -180,15 +217,29 @@ def _risk_flags_from_items(
     return flags
 
 
+def _is_indian_ticker(ticker: str) -> bool:
+    sym = (ticker or "").strip().upper()
+    return sym.endswith(".NS") or sym.endswith(".BO")
+
+
 def _fetch_yahoo_rss(ticker: str, max_items: int = 12) -> list[dict[str, str]]:
     """
     Yahoo Finance headline RSS — stable HTTPS endpoint suitable for CI.
+    Uses region=IN for Indian tickers (.NS/.BO) so local-language results
+    are returned; falls back to the no-region URL on failure.
     """
     symbol = quote(ticker, safe=".")
-    urls = (
-        f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US",
-        f"https://finance.yahoo.com/rss/headline?s={symbol}",
-    )
+    if _is_indian_ticker(ticker):
+        urls = (
+            f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=IN&lang=en-IN",
+            f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US",
+            f"https://finance.yahoo.com/rss/headline?s={symbol}",
+        )
+    else:
+        urls = (
+            f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US",
+            f"https://finance.yahoo.com/rss/headline?s={symbol}",
+        )
     headers = {
         "User-Agent": _USER_AGENT,
         "Accept": "application/rss+xml, application/xml, text/xml, */*",

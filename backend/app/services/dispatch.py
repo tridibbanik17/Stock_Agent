@@ -63,21 +63,47 @@ def late_minutes() -> int:
 
 # Common non-IANA labels → real zones (bad TZ previously fell back to UTC and missed slots).
 _TZ_ALIASES = {
+    # Canada
     "toronto": "America/Toronto",
     "america/toronto": "America/Toronto",
+    "montreal": "America/Toronto",
+    "ottawa": "America/Toronto",
+    "halifax": "America/Halifax",
+    "calgary": "America/Edmonton",
+    "edmonton": "America/Edmonton",
+    "winnipeg": "America/Winnipeg",
+    "vancouver": "America/Vancouver",
+    # US Eastern
     "eastern": "America/New_York",
     "est": "America/New_York",
     "edt": "America/New_York",
     "new york": "America/New_York",
     "america/new_york": "America/New_York",
+    # US Central
+    "central": "America/Chicago",
+    "cst": "America/Chicago",
+    "cdt": "America/Chicago",
+    "chicago": "America/Chicago",
+    # US Mountain
+    "mountain": "America/Denver",
+    "mst": "America/Denver",
+    "mdt": "America/Denver",
+    "denver": "America/Denver",
+    # US Pacific
     "pacific": "America/Los_Angeles",
     "pst": "America/Los_Angeles",
     "pdt": "America/Los_Angeles",
     "los angeles": "America/Los_Angeles",
-    "vancouver": "America/Vancouver",
+    # India — Asia/Kolkata is the only IANA zone for all of India
     "kolkata": "Asia/Kolkata",
     "india": "Asia/Kolkata",
     "ist": "Asia/Kolkata",
+    "mumbai": "Asia/Kolkata",
+    "delhi": "Asia/Kolkata",
+    "bangalore": "Asia/Kolkata",
+    "chennai": "Asia/Kolkata",
+    "hyderabad": "Asia/Kolkata",
+    "pune": "Asia/Kolkata",
 }
 
 

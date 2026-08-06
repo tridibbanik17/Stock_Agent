@@ -282,6 +282,53 @@ def _canadian_us_peer_symbol(symbol: str) -> str | None:
     return None
 
 
+# Well-known Indian ADRs / NYSE listings that have a US peer with richer
+# fundamental data (PEG, sector, industry) on Yahoo Finance.
+# Format: "NSE/BSE_SYMBOL_WITHOUT_SUFFIX" → "US_TICKER"
+_INDIAN_ADR_MAP: dict[str, str] = {
+    "INFY": "INFY",        # Infosys → NYSE: INFY
+    "WIT": "WIT",          # Wipro → NYSE: WIT  (base already is WIT)
+    "HDB": "HDB",          # HDFC Bank → NYSE: HDB
+    "IBN": "IBN",          # ICICI Bank → NYSE: IBN
+    "SIFY": "SIFY",        # Sify Technologies
+    "VEDL": "VEDL",        # Vedanta → NYSE: VEDL
+    "TTM": "TTM",          # Tata Motors → NYSE: TTM
+    "MFG": "MFG",          # Mizuho (not Indian, skip via name check)
+    "RDY": "RDY",          # Dr. Reddy's → NYSE: RDY
+    "CIPLA": "CIPLA",      # Cipla (OTC)
+    "HDFCBANK": "HDB",     # HDFC Bank NSE name → NYSE: HDB
+    "WIPRO": "WIT",        # Wipro NSE → NYSE: WIT
+    "INFOSYS": "INFY",     # Infosys NSE → NYSE: INFY
+    "TATAMOTORS": "TTM",   # Tata Motors NSE → NYSE: TTM
+    "DRREDDY": "RDY",      # Dr. Reddy's NSE → NYSE: RDY
+    "ICICIBANK": "IBN",    # ICICI Bank NSE → NYSE: IBN
+    "MPHASIS": "MPHL",     # Mphasis (OTC)
+    "TECHM": "TCMLY",      # Tech Mahindra (OTC ADR)
+    "HCLTECH": "HCLT.NS",  # HCL — no liquid US ADR, skip
+}
+
+
+def _indian_us_peer_symbol(symbol: str) -> str | None:
+    """
+    For Indian NSE/BSE tickers, return the US ADR ticker if one exists.
+    INFOSYS.NS → INFY, TATAMOTORS.BO → TTM, etc.
+    Only returns tickers with known liquid US ADRs.
+    """
+    sym = (symbol or "").strip().upper()
+    base: str | None = None
+    for suffix in (".NS", ".BO"):
+        if sym.endswith(suffix):
+            base = sym[: -len(suffix)]
+            break
+    if not base:
+        return None
+    peer = _INDIAN_ADR_MAP.get(base)
+    # Skip entries that map to themselves or non-US tickers
+    if not peer or "." in peer or peer == base:
+        return None
+    return peer
+
+
 def _looks_like_same_issuer(local_info: dict[str, Any], peer_info: dict[str, Any]) -> bool:
     local_blob = " ".join(
         str(local_info.get(k) or "")
@@ -320,8 +367,10 @@ def _peer_fundamentals(symbol: str, local_info: dict[str, Any]) -> dict[str, Any
     """
     For thin Canadian listings / CDRs, pull PEG + sector metadata from the US peer
     when issuer names match (never replaces local CAD price/history).
+    Also handles Indian tickers with known US ADR equivalents (e.g. INFOSYS.NS → INFY).
     """
-    peer_symbol = _canadian_us_peer_symbol(symbol)
+    # Try Canadian → US peer first, then Indian → US ADR
+    peer_symbol = _canadian_us_peer_symbol(symbol) or _indian_us_peer_symbol(symbol)
     if not peer_symbol:
         return {}
     try:
@@ -330,7 +379,10 @@ def _peer_fundamentals(symbol: str, local_info: dict[str, Any]) -> dict[str, Any
         logger.exception("US peer lookup failed for %s → %s", symbol, peer_symbol)
         return {}
     if not _looks_like_same_issuer(local_info, peer_info):
-        return {}
+        # Indian ADRs often have different short names — skip the name check for them.
+        # For known Indian ADR map entries we trust the explicit mapping.
+        if not _indian_us_peer_symbol(symbol):
+            return {}
 
     out: dict[str, Any] = {"peerSymbol": peer_symbol}
     peg = _derive_peg(peer_info)

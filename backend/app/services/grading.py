@@ -39,6 +39,25 @@ _RISKY_NEWS_KEYS = (
     "whistleblower",
     "accounting irregular",
     "restat",
+    # Indian regulatory / enforcement keywords
+    "sebi",
+    "enforcement directorate",
+    "ed probe",
+    "ed raid",
+    "cbi",
+    "income tax raid",
+    "it raid",
+    "nse notice",
+    "bse notice",
+    "nse penalty",
+    "bse penalty",
+    "cci probe",
+    "rbi penalty",
+    "rbi action",
+    "nclt",
+    "pmla",
+    "money laundering",
+    "promoter pledge",
 )
 
 
