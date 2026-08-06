@@ -469,6 +469,63 @@ def _safe_info(stock: yf.Ticker) -> dict[str, Any]:
         return {}
 
 
+# ---------------------------------------------------------------------------
+# Google Finance fallback — free, no API key, no geo-block.
+# Used when yfinance returns no price for Indian tickers (Yahoo coverage gap).
+# ---------------------------------------------------------------------------
+
+_GOOGLE_FINANCE_EXCHANGE_MAP = {
+    ".NS": "NSE",
+    ".BO": "BSE",
+}
+
+
+def _google_finance_price(symbol: str) -> float | None:
+    """
+    Scrape last price from Google Finance quote page.
+    Returns None on any failure — caller falls through to price_unavailable.
+    """
+    base = symbol.strip().upper()
+    exchange: str | None = None
+    for suffix, exc in _GOOGLE_FINANCE_EXCHANGE_MAP.items():
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            exchange = exc
+            break
+    if not exchange:
+        return None
+
+    url = f"https://www.google.com/finance/quote/{base}:{exchange}"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        import re as _re
+
+        import httpx as _httpx
+
+        resp = _httpx.get(url, headers=headers, timeout=10, follow_redirects=True)
+        if resp.status_code != 200:
+            logger.debug("Google Finance HTTP %d for %s", resp.status_code, symbol)
+            return None
+        # Google Finance renders prices as >1,118.45< in the HTML
+        prices = _re.findall(r">([\d,]+\.\d{2})<", resp.text)
+        if prices:
+            price = float(prices[0].replace(",", ""))
+            logger.info("Google Finance fallback price for %s = %s", symbol, price)
+            return price
+        logger.debug("Google Finance no price parsed for %s", symbol)
+        return None
+    except Exception:
+        logger.debug("Google Finance fallback failed for %s", symbol, exc_info=True)
+        return None
+
+
 def analyze_ticker(ticker: str) -> dict[str, Any]:
     """Fetch price + core metrics for one symbol. Never touches portfolio lots."""
     symbol = ticker.strip().upper()
@@ -496,6 +553,12 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             price = _safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
             if price is not None:
                 price = round(price, 2)
+
+        # Google Finance fallback for Indian tickers missing from Yahoo Finance.
+        if price is None and _is_indian_ticker(symbol):
+            gf_price = _google_finance_price(symbol)
+            if gf_price is not None:
+                price = round(gf_price, 2)
 
         currency = resolve_currency(symbol, info)
         peg = _derive_peg(info)
