@@ -1274,7 +1274,6 @@ async function refreshQuotesInternal(opts = {}) {
 
   if (!isPartial) {
     quotesLoading = true;
-    // Full refresh may change grades — clear AI blurbs so Explain runs fresh.
     aiExplainCache = {};
     aiExplainGeneration += 1;
     updateExplainButtonLabel(0);
@@ -1306,58 +1305,72 @@ async function refreshQuotesInternal(opts = {}) {
   /** @type {string[]} */
   const failed = [];
   try {
-    // Batch fetch: one API call for all tickers (backend parallelizes internally).
-    // Then reveal results progressively for the "ticking in" UX.
-    const batchSize = isPartial ? targets.length : targets.length;
-    /** @type {Record<string, QuoteSnapshot>} */
-    const batchResults = {};
-    try {
-      const data = await fetchWatchlistSnapshot(targets);
-      for (const quote of data?.quotes || []) {
-        if (quote?.ticker) {
-          batchResults[quote.ticker] = quote;
-        }
-      }
-    } catch (error) {
-      console.warn("[Stock Agent] batch quote fetch failed", error);
-      // Mark all targets as failed with the error
-      for (const ticker of targets) {
-        batchResults[ticker] = {
-          ticker,
-          price: null,
-          error: error instanceof Error ? error.message : "fetch_failed",
-        };
-      }
+    // Chunked parallel fetch: split tickers into small batches (4 each),
+    // fire all chunks concurrently. As each chunk resolves, immediately
+    // reveal those tickers — so first results appear in ~4s, not 30s+.
+    const CHUNK_SIZE = 4;
+    const chunks = [];
+    for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
+      chunks.push(targets.slice(i, i + CHUNK_SIZE));
     }
 
-    // Progressive reveal: update cache and re-render one ticker at a time
-    // with a brief delay so each card "ticks in" visually.
-    const revealDelay = targets.length > 1 ? 80 : 0;
-    for (let i = 0; i < targets.length; i += 1) {
-      const ticker = targets[i];
-      const quote = batchResults[ticker] || { ticker, price: null, error: "empty_snapshot" };
+    // Process all chunks in parallel, reveal results as each completes.
+    let revealed = 0;
+    const chunkPromises = chunks.map((chunk, chunkIdx) =>
+      fetchWatchlistSnapshot(chunk)
+        .then((data) => ({ chunk, data, error: null }))
+        .catch((error) => ({ chunk, data: null, error }))
+    );
 
-      if (!quiet && !skipStatus && targets.length > 1) {
-        setStatus(
-          `Loaded ${ticker} (${i + 1} / ${targets.length})`,
-          "info",
-          "watchlist",
-          "persistent"
-        );
+    // Use Promise.allSettled-like pattern: race all promises and process
+    // as each resolves (earliest-first) for true streaming UX.
+    const pending = chunkPromises.map((p, i) =>
+      p.then((result) => ({ ...result, idx: i }))
+    );
+    const remaining = [...pending];
+
+    while (remaining.length > 0) {
+      const resolved = await Promise.race(remaining);
+      // Remove the resolved promise from the remaining set
+      const resolvedIdx = remaining.findIndex(
+        (p) => p === pending[resolved.idx]
+      );
+      if (resolvedIdx !== -1) remaining.splice(resolvedIdx, 1);
+
+      // Process this chunk's results
+      const { chunk, data, error } = resolved;
+      for (const ticker of chunk) {
+        let quote = null;
+        if (error) {
+          quote = {
+            ticker,
+            price: null,
+            error: error instanceof Error ? error.message : "fetch_failed",
+          };
+        } else {
+          quote = (data?.quotes || []).find((q) => q?.ticker === ticker) ||
+            { ticker, price: null, error: "empty_snapshot" };
+        }
+
+        const merged = mergeQuoteSnapshot(quoteCache[ticker], quote);
+        quoteCache[ticker] = /** @type {QuoteSnapshot} */ (merged);
+        if (merged?.price != null) okCount += 1;
+        else failed.push(ticker);
+
+        quotesPending.delete(ticker);
+        revealed += 1;
+
+        if (!quiet && !skipStatus) {
+          setStatus(
+            `Loaded ${revealed} / ${targets.length}`,
+            "info",
+            "watchlist",
+            "persistent"
+          );
+        }
       }
-
-      const merged = mergeQuoteSnapshot(quoteCache[ticker], quote);
-      quoteCache[ticker] = /** @type {QuoteSnapshot} */ (merged);
-      if (merged?.price != null) okCount += 1;
-      else failed.push(ticker);
-
-      quotesPending.delete(ticker);
+      // Re-render after each chunk for immediate visual feedback
       renderWatchlist(watchlist, state.holdings, quoteCache);
-
-      // Staggered reveal: short pause between each ticker for visual feedback.
-      if (revealDelay && i < targets.length - 1) {
-        await new Promise((r) => setTimeout(r, revealDelay));
-      }
     }
 
     await setCachedQuotes(
