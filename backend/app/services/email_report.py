@@ -249,6 +249,7 @@ def _human_asset_class(raw: object) -> str:
         "growth_tech": "Growth / tech",
         "capital_intensive": "Capital intensive",
         "crypto_proxy": "Crypto proxy",
+        "index_etf": "Index / ETF",
         "financial": "Financial",
         "utility": "Utility",
     }

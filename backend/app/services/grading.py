@@ -97,6 +97,63 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
     notes: list[str] = []
     missing_data: list[str] = []
 
+    try:
+        window = int(sma_window) if sma_window is not None else 200
+    except (TypeError, ValueError):
+        window = 200
+    sma_label = "200-day SMA" if window >= 200 else f"{window}-day SMA"
+
+    # --- Index / ETF: corporate ratios do not apply; start neutral (HOLD) ---
+    if asset == "index_etf":
+        score = 3
+        notes.append(
+            "INDEX/ETF: tracked against trend (SMA) and RSI momentum — "
+            "single-company D/E, PEG, and ROE do not apply."
+        )
+        if above_sma is True:
+            score += 1
+            if window < 200:
+                notes.append(
+                    f"Trend uses a {window}-day SMA (listing history under 200 sessions)."
+                )
+        elif above_sma is False:
+            score -= 1
+            notes.append(f"Price is below the {sma_label} (macro downtrend).")
+            if window < 200:
+                notes.append(
+                    f"Trend uses a {window}-day SMA (listing history under 200 sessions)."
+                )
+        else:
+            missing_data.append("200-SMA")
+
+        if isinstance(rsi, (int, float)):
+            if rsi < 35:
+                score += 1
+                notes.append("RSI shows selling fatigue - possible mean-reversion zone.")
+            elif rsi > 70:
+                score -= 1
+                notes.append("RSI is overbought (>70) - avoid chasing; risk of pullbacks.")
+        else:
+            missing_data.append("RSI")
+
+        risky_news = [
+            item for item in news_items if _is_risky_headline(item.get("title", ""))
+        ]
+        if risky_news:
+            penalty = min(2, len(risky_news))
+            score = max(0, score - penalty)
+            for item in risky_news[:3]:
+                notes.append(f"News risk: {item['title']}")
+        elif news_items:
+            for item in news_items[:2]:
+                notes.append(f"Headline: {item['title']}")
+
+        if missing_data:
+            notes.append(f"Missing data: {', '.join(missing_data)}.")
+
+        score = max(0, min(5, score))
+        return _finalize_grade(score, notes, asset, risky_news or news_items)
+
     # --- Debt-to-Equity ---
     if isinstance(de_ratio, (int, float)):
         if asset == "capital_intensive":
@@ -157,12 +214,6 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
             missing_data.append("ROE")
 
     # --- 200-day SMA (or shorter window for new listings / CDRs) ---
-    try:
-        window = int(sma_window) if sma_window is not None else 200
-    except (TypeError, ValueError):
-        window = 200
-    sma_label = "200-day SMA" if window >= 200 else f"{window}-day SMA"
-
     if above_sma is True:
         score += 1
         if window < 200:
@@ -205,14 +256,30 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
     if missing_data:
         notes.append(f"Missing data: {', '.join(missing_data)}.")
 
+    return _finalize_grade(score, notes, asset, risky_news or news_items)
+
+
+def _finalize_grade(
+    score: int,
+    notes: list[str],
+    asset: str,
+    news_risks: list[dict[str, str]],
+) -> dict[str, Any]:
+    score = max(0, min(5, int(score)))
     if score >= 4:
         grade = "STRONG_BUY"
         verdict = f"STRONG BUY ({score}/5)"
-        notes.insert(0, "Fundamentals align with momentum on the rule scorecard.")
+        if asset == "index_etf":
+            notes.insert(0, "Trend and momentum look constructive for this index/ETF.")
+        else:
+            notes.insert(0, "Fundamentals align with momentum on the rule scorecard.")
     elif score == 3:
         grade = "HOLD"
         verdict = f"HOLD ({score}/5)"
-        notes.insert(0, "Decent health, but lacks a strong trigger right now.")
+        if asset == "index_etf":
+            notes.insert(0, "Neutral index/ETF posture on SMA and RSI.")
+        else:
+            notes.insert(0, "Decent health, but lacks a strong trigger right now.")
     else:
         grade = "AVOID"
         verdict = f"AVOID ({score}/5)"
@@ -225,7 +292,7 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         "verdict": verdict,
         "notes": notes,
         "assetClass": asset,
-        "newsRisks": (risky_news or news_items)[:3],
+        "newsRisks": (news_risks or [])[:3],
     }
 
 

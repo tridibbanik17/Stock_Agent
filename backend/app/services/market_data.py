@@ -61,19 +61,37 @@ _GROWTH_INDUSTRY_KEYS = (
 def classify_asset_from_info(info: dict[str, Any] | None, ticker: str = "") -> str:
     """
     Derive grading asset class from yfinance metadata (not a hardcoded ticker list).
-    Returns: crypto_proxy | capital_intensive | growth_tech | standard
+    Returns: index_etf | crypto_proxy | capital_intensive | growth_tech | standard
     """
     info = info or {}
     quote_type = str(info.get("quoteType") or "").strip().upper()
     sector = str(info.get("sector") or "").strip().lower()
     industry = str(info.get("industry") or "").strip().lower()
+    category = str(info.get("category") or "").strip().lower()
+    short_name = str(info.get("shortName") or "").strip().lower()
+    long_name = str(info.get("longName") or "").strip().lower()
     summary = str(
         info.get("longBusinessSummary")
-        or info.get("longName")
-        or info.get("shortName")
+        or long_name
+        or short_name
         or ""
     ).lower()
-    blob = f"{sector} {industry} {summary}"
+    blob = f"{sector} {industry} {category} {summary}"
+    name_blob = f" {short_name} {long_name} {category} "
+
+    # Passiveives / funds first — corporate D/E, PEG, ROE do not apply.
+    if quote_type in {"ETF", "MUTUALFUND", "INDEX"}:
+        return "index_etf"
+    if (
+        "etf" in category
+        or "index fund" in category
+        or " exchange traded" in name_blob
+        or " etf" in name_blob
+        or name_blob.endswith("etf ")
+        or " index etf" in name_blob
+        or "index fund" in name_blob
+    ):
+        return "index_etf"
 
     if quote_type == "CRYPTOCURRENCY":
         return "crypto_proxy"
