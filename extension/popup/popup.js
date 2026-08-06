@@ -1157,7 +1157,7 @@ function buildQuoteMetaNodes(quote, ticker = "") {
   if (quote.error && quote.price == null) {
     const err = document.createElement("span");
     err.className = "quote-error";
-    err.textContent = "Quote unavailable";
+    err.textContent = "Unknown or invalid symbol";
     err.title = String(quote.error);
     return [err];
   }
@@ -1232,20 +1232,23 @@ let quotesRefreshChain = Promise.resolve();
 /**
  * Fetch live yfinance snapshot + grades one ticker at a time (progressive UI).
  * Pass `tickers` to refresh only those symbols (e.g. after Add Ticker).
- * @param {{ quiet?: boolean, tickers?: string[] }} [opts]
+ * @param {{ quiet?: boolean, tickers?: string[], skipStatus?: boolean }} [opts]
+ * @returns {Promise<{ okCount: number, failed: string[] }>}
  */
 function refreshQuotes(opts = {}) {
   const run = () => refreshQuotesInternal(opts);
   const next = quotesRefreshChain.then(run, run);
-  quotesRefreshChain = next.catch(() => {});
+  quotesRefreshChain = next.catch(() => ({ okCount: 0, failed: [] }));
   return next;
 }
 
 /**
- * @param {{ quiet?: boolean, tickers?: string[] }} [opts]
+ * @param {{ quiet?: boolean, tickers?: string[], skipStatus?: boolean }} [opts]
+ * @returns {Promise<{ okCount: number, failed: string[] }>}
  */
 async function refreshQuotesInternal(opts = {}) {
   const quiet = Boolean(opts.quiet);
+  const skipStatus = Boolean(opts.skipStatus);
   const onlyTickers = Array.isArray(opts.tickers)
     ? opts.tickers.map((t) => String(t || "").trim().toUpperCase()).filter(Boolean)
     : null;
@@ -1261,13 +1264,13 @@ async function refreshQuotesInternal(opts = {}) {
     quotesPending = new Set();
     quotesLoading = false;
     await setCachedQuotes({});
-    if (!quiet) {
+    if (!quiet && !skipStatus) {
       setStatus("Add a ticker before refreshing quotes.", "warn", "watchlist", "error");
     }
-    return;
+    return { okCount: 0, failed: [] };
   }
 
-  if (!targets.length) return;
+  if (!targets.length) return { okCount: 0, failed: [] };
 
   if (!isPartial) {
     quotesLoading = true;
@@ -1288,7 +1291,7 @@ async function refreshQuotesInternal(opts = {}) {
   }
 
   renderWatchlist(watchlist, state.holdings, quoteCache);
-  if (!quiet) {
+  if (!quiet && !skipStatus) {
     setStatus(
       isPartial
         ? `Fetching ${targets[0]}…`
@@ -1300,10 +1303,12 @@ async function refreshQuotesInternal(opts = {}) {
   }
 
   let okCount = 0;
+  /** @type {string[]} */
+  const failed = [];
   try {
     for (let i = 0; i < targets.length; i += 1) {
       const ticker = targets[i];
-      if (!quiet) {
+      if (!quiet && !skipStatus) {
         setStatus(
           `Fetching ${ticker} (${i + 1} / ${targets.length})…`,
           "info",
@@ -1319,12 +1324,14 @@ async function refreshQuotesInternal(opts = {}) {
           const merged = mergeQuoteSnapshot(quoteCache[quote.ticker], quote);
           quoteCache[quote.ticker] = /** @type {QuoteSnapshot} */ (merged);
           if (merged?.price != null) okCount += 1;
+          else failed.push(ticker);
         } else {
           quoteCache[ticker] = mergeQuoteSnapshot(quoteCache[ticker], {
             ticker,
             price: null,
             error: "empty_snapshot",
           });
+          failed.push(ticker);
         }
       } catch (error) {
         console.warn("[Stock Agent] quote failed", ticker, error);
@@ -1333,6 +1340,7 @@ async function refreshQuotesInternal(opts = {}) {
           price: null,
           error: error instanceof Error ? error.message : "fetch_failed",
         });
+        failed.push(ticker);
       }
       quotesPending.delete(ticker);
       renderWatchlist(watchlist, state.holdings, quoteCache);
@@ -1344,7 +1352,7 @@ async function refreshQuotesInternal(opts = {}) {
     quotesUpdatedAt = new Date();
     updateQuotesUpdatedLabel();
 
-    if (!quiet || isPartial) {
+    if (!skipStatus && (!quiet || isPartial)) {
       setStatus(
         isPartial
           ? okCount
@@ -1368,6 +1376,8 @@ async function refreshQuotesInternal(opts = {}) {
     }
     renderWatchlist(watchlist, state.holdings, quoteCache);
   }
+
+  return { okCount, failed };
 }
 
 /**
@@ -1616,9 +1626,38 @@ async function onAddTicker() {
   els.tickerInput.value = "";
   els.tickerInput.focus();
   renderWatchlist(result.watchlist, result.holdings, quoteCache);
+  setStatus(`Checking ${ticker}…`, "info", "watchlistAdd", "persistent");
+
+  // Confirm Yahoo has a price before keeping the symbol.
+  const fetchResult = await refreshQuotes({
+    quiet: true,
+    tickers: [ticker],
+    skipStatus: true,
+  });
+  const quote = quoteCache[ticker];
+  const ok = quote && typeof quote.price === "number" && Number.isFinite(quote.price);
+
+  if (!ok || (fetchResult?.failed || []).includes(ticker)) {
+    const pruned = (await getLocalState()).watchlist.filter((t) => t !== ticker);
+    const after = await setWatchlist(pruned);
+    delete quoteCache[ticker];
+    delete aiExplainCache[ticker];
+    await setCachedQuotes(
+      /** @type {Record<string, Record<string, unknown>>} */ (quoteCache)
+    );
+    renderWatchlist(after.watchlist, after.holdings, quoteCache);
+    els.tickerInput.value = ticker;
+    els.tickerInput.focus();
+    setStatus(
+      `${ticker} isn’t a valid tradeable symbol (no live price). Not added — check the spelling (TSX often needs .TO).`,
+      "warn",
+      "watchlistAdd",
+      "error"
+    );
+    return;
+  }
+
   setStatus(`Added ${ticker}.`, "ok", "watchlistAdd", "transient");
-  // Only fetch the new symbol — keep cached quotes for the rest.
-  void refreshQuotes({ quiet: true, tickers: [ticker] });
 }
 
 /**
