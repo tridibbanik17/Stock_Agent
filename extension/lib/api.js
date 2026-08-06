@@ -85,6 +85,8 @@ export async function subscribeDelivery(localState) {
 
   return request("/api/subscribe", {
     method: "POST",
+    // Immediate send grades the whole watchlist before responding — allow time.
+    signal: AbortSignal.timeout(180_000),
     body: JSON.stringify({
       email: payload.email,
       watchlist: payload.watchlist,

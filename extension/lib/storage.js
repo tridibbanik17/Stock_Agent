@@ -360,7 +360,7 @@ export function formatDeliveryStatusLine(schedule, hint = null, now = new Date()
 
   if (hint.status === "sending") {
     if (age > SENDING_HINT_TTL_MS) return nextLine;
-    return `${nextLine}\nSend started — check your inbox shortly.`;
+    return `${nextLine}\nSending report now…`;
   }
   if (hint.status === "sent") {
     if (age > RESULT_HINT_TTL_MS) return nextLine;
@@ -368,7 +368,7 @@ export function formatDeliveryStatusLine(schedule, hint = null, now = new Date()
   }
   if (hint.status === "failed") {
     if (age > RESULT_HINT_TTL_MS) return nextLine;
-    return `${nextLine}\nLast send failed — cron retries while the window is open.`;
+    return `${nextLine}\nLast send failed — check spam, then Save & Subscribe again (or wait for cron retry).`;
   }
   if (hint.status === "daily_cap") {
     if (age > RESULT_HINT_TTL_MS) return nextLine;

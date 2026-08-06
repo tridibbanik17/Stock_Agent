@@ -9,7 +9,7 @@ import os
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 
 from app.api.abuse import (
@@ -254,7 +254,6 @@ def _run_resubscribe(token: str) -> dict[str, Any]:
 async def subscribe(
     body: SubscribeRequest,
     _: ProtectSubscribe,
-    background_tasks: BackgroundTasks,
 ) -> SubscribeResponse:
     logger.info(
         "POST /api/subscribe email=%s watchlist=%s frequency=%s",
@@ -284,7 +283,8 @@ async def subscribe(
             detail="Database connection failed. Check Supabase credentials and schema.",
         ) from exc
 
-    # If due now, kick send in the background so Save stays fast (yfinance can be slow).
+    # If due now, send BEFORE responding so the client gets truth (sent/failed),
+    # not an optimistic "sending" that dies when Render freezes background work.
     report_sent_now = False
     report_send_status: str | None = "not_due"
     try:
@@ -293,16 +293,22 @@ async def subscribe(
         gate = evaluate_due_now(record)
         report_send_status = str(gate.get("status") or "not_due")
         if report_send_status == "due":
-            background_tasks.add_task(dispatch_if_due_now, record)
-            report_sent_now = True
-            report_send_status = "sending"
             logger.info(
-                "Queued immediate report after subscribe email=%s",
+                "Running immediate report after subscribe email=%s",
                 body.email,
+            )
+            result = await asyncio.to_thread(dispatch_if_due_now, record)
+            report_send_status = str(result.get("status") or "failed")
+            report_sent_now = bool(result.get("sent"))
+            logger.info(
+                "Immediate report after subscribe email=%s status=%s sent=%s",
+                body.email,
+                report_send_status,
+                report_sent_now,
             )
     except Exception:
         logger.exception(
-            "Immediate dispatch queue after subscribe failed email=%s",
+            "Immediate dispatch after subscribe failed email=%s",
             body.email,
         )
         report_send_status = "failed"

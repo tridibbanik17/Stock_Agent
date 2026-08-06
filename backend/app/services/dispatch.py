@@ -126,16 +126,31 @@ def _local_now(schedule: dict, now_utc: datetime) -> datetime:
         return now_utc.astimezone(timezone.utc)
 
 
+def _normalize_schedule_days(days: object) -> set[int]:
+    """Coerce preferred_days from DB (may be strings) to JS weekday ints."""
+    out: set[int] = set()
+    if not isinstance(days, (list, tuple, set)):
+        return out
+    for raw in days:
+        try:
+            day = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= day <= 6:
+            out.add(day)
+    return out
+
+
 def _day_matches(schedule: dict, local_dt: datetime) -> bool:
     js_weekday = (local_dt.weekday() + 1) % 7
-    days = schedule.get("days") or []
+    days = _normalize_schedule_days(schedule.get("days"))
     frequency = schedule.get("frequency") or "custom"
 
     if frequency == "daily":
         return True
     if frequency == "weekdays":
         return js_weekday in {1, 2, 3, 4, 5}
-    return js_weekday in set(days)
+    return js_weekday in days
 
 
 def matching_due_slot(

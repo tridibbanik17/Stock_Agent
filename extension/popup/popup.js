@@ -1968,6 +1968,19 @@ async function onSaveAndSubscribe() {
       geminiApiKey: state.geminiApiKey,
     };
 
+    setStatus(
+      "Saving… If you’re in a send window, waiting for delivery confirmation.",
+      "info",
+      "subscribe",
+      "persistent"
+    );
+    await setDeliveryStatusHint({
+      status: "sending",
+      at: new Date().toISOString(),
+      detail: "",
+    });
+    await refreshScheduleSummary();
+
     const outbound = assertNoPrivateLeak(buildCloudPayload(localView));
     console.log("[SUBSCRIBE] sanitized outbound payload:", outbound);
 
@@ -1984,27 +1997,37 @@ async function onSaveAndSubscribe() {
     });
 
     const scheduleLabel = formatScheduleLabel(outbound.schedule);
+    const sendStatus = String(response?.report_send_status || "not_due");
     let message = `Saved — ${scheduleLabel} → ${outbound.email}`;
-    if (response?.report_sent_now || response?.report_send_status === "sending") {
-      message = `Saved — send window open, emailing now → ${outbound.email}`;
-    } else if (response?.report_send_status === "failed") {
+    let statusKind = /** @type {"ok"|"warn"|"error"} */ ("ok");
+
+    if (response?.report_sent_now || sendStatus === "sent") {
+      message = `Saved — email sent to ${outbound.email}. Check inbox (and spam).`;
+    } else if (sendStatus === "failed") {
       message =
-        `Saved — could not start email now; cron retries while the window is open.`;
-    } else if (response?.report_send_status === "daily_cap") {
+        `Saved — email send failed. Check spam / Resend config, then try Save & Subscribe again while the window is open.`;
+      statusKind = "error";
+    } else if (sendStatus === "sending") {
+      // Legacy API: should not happen after sync-send deploy.
+      message = `Saved — send was queued; confirm delivery in your inbox.`;
+      statusKind = "warn";
+    } else if (sendStatus === "daily_cap") {
       message = `Saved — daily email cap reached (max 2 today).`;
-    } else if (response?.report_send_status === "already_sent") {
+      statusKind = "warn";
+    } else if (sendStatus === "already_sent") {
       message = `Saved — already sent for this time slot today.`;
+    } else {
+      message = `Saved — ${scheduleLabel} → ${outbound.email}. Next send follows your schedule.`;
     }
 
-    const sendStatus = String(response?.report_send_status || "not_due");
     await setDeliveryStatusHint({
-      status: sendStatus,
+      status: sendStatus === "sending" ? "none" : sendStatus,
       at: new Date().toISOString(),
       detail: "",
     });
     await refreshScheduleSummary();
 
-    setStatus(message, "ok", "subscribe", "persistent");
+    setStatus(message, statusKind, "subscribe", "persistent");
   } catch (error) {
     console.error("[SUBSCRIBE] failed", error);
     setStatus(error?.message || "Subscribe failed", "error", "subscribe", "error");
