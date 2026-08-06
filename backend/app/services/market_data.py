@@ -292,19 +292,12 @@ _INDIAN_ADR_MAP: dict[str, str] = {
     "IBN": "IBN",          # ICICI Bank → NYSE: IBN
     "SIFY": "SIFY",        # Sify Technologies
     "VEDL": "VEDL",        # Vedanta → NYSE: VEDL
-    "TTM": "TTM",          # Tata Motors → NYSE: TTM
-    "MFG": "MFG",          # Mizuho (not Indian, skip via name check)
     "RDY": "RDY",          # Dr. Reddy's → NYSE: RDY
-    "CIPLA": "CIPLA",      # Cipla (OTC)
     "HDFCBANK": "HDB",     # HDFC Bank NSE name → NYSE: HDB
     "WIPRO": "WIT",        # Wipro NSE → NYSE: WIT
     "INFOSYS": "INFY",     # Infosys NSE → NYSE: INFY
-    "TATAMOTORS": "TTM",   # Tata Motors NSE → NYSE: TTM
     "DRREDDY": "RDY",      # Dr. Reddy's NSE → NYSE: RDY
     "ICICIBANK": "IBN",    # ICICI Bank NSE → NYSE: IBN
-    "MPHASIS": "MPHL",     # Mphasis (OTC)
-    "TECHM": "TCMLY",      # Tech Mahindra (OTC ADR)
-    "HCLTECH": "HCLT.NS",  # HCL — no liquid US ADR, skip
 }
 
 

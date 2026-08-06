@@ -791,7 +791,7 @@ button.remove:hover {
 
 .ticker-row {
   display: grid;
-  grid-template-columns: 58px 1fr 1fr 58px;
+  grid-template-columns: minmax(72px, auto) 1fr 1fr 58px;
   gap: 6px;
   align-items: center;
 }
@@ -801,6 +801,9 @@ button.remove:hover {
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .quote-meta {
