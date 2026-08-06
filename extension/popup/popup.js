@@ -1295,7 +1295,7 @@ async function refreshQuotesInternal(opts = {}) {
     setStatus(
       isPartial
         ? `Fetching ${targets[0]}…`
-        : `Fetching 1 / ${targets.length}…`,
+        : `Fetching ${targets.length} ticker${targets.length === 1 ? "" : "s"}…`,
       "info",
       "watchlist",
       "persistent"
@@ -1306,44 +1306,58 @@ async function refreshQuotesInternal(opts = {}) {
   /** @type {string[]} */
   const failed = [];
   try {
+    // Batch fetch: one API call for all tickers (backend parallelizes internally).
+    // Then reveal results progressively for the "ticking in" UX.
+    const batchSize = isPartial ? targets.length : targets.length;
+    /** @type {Record<string, QuoteSnapshot>} */
+    const batchResults = {};
+    try {
+      const data = await fetchWatchlistSnapshot(targets);
+      for (const quote of data?.quotes || []) {
+        if (quote?.ticker) {
+          batchResults[quote.ticker] = quote;
+        }
+      }
+    } catch (error) {
+      console.warn("[Stock Agent] batch quote fetch failed", error);
+      // Mark all targets as failed with the error
+      for (const ticker of targets) {
+        batchResults[ticker] = {
+          ticker,
+          price: null,
+          error: error instanceof Error ? error.message : "fetch_failed",
+        };
+      }
+    }
+
+    // Progressive reveal: update cache and re-render one ticker at a time
+    // with a brief delay so each card "ticks in" visually.
+    const revealDelay = targets.length > 1 ? 80 : 0;
     for (let i = 0; i < targets.length; i += 1) {
       const ticker = targets[i];
-      if (!quiet && !skipStatus) {
+      const quote = batchResults[ticker] || { ticker, price: null, error: "empty_snapshot" };
+
+      if (!quiet && !skipStatus && targets.length > 1) {
         setStatus(
-          `Fetching ${ticker} (${i + 1} / ${targets.length})…`,
+          `Loaded ${ticker} (${i + 1} / ${targets.length})`,
           "info",
           "watchlist",
           "persistent"
         );
       }
-      try {
-        const data = await fetchWatchlistSnapshot([ticker]);
-        const quote = (data?.quotes || []).find((q) => q?.ticker === ticker) ||
-          (data?.quotes || [])[0];
-        if (quote?.ticker) {
-          const merged = mergeQuoteSnapshot(quoteCache[quote.ticker], quote);
-          quoteCache[quote.ticker] = /** @type {QuoteSnapshot} */ (merged);
-          if (merged?.price != null) okCount += 1;
-          else failed.push(ticker);
-        } else {
-          quoteCache[ticker] = mergeQuoteSnapshot(quoteCache[ticker], {
-            ticker,
-            price: null,
-            error: "empty_snapshot",
-          });
-          failed.push(ticker);
-        }
-      } catch (error) {
-        console.warn("[Stock Agent] quote failed", ticker, error);
-        quoteCache[ticker] = mergeQuoteSnapshot(quoteCache[ticker], {
-          ticker,
-          price: null,
-          error: error instanceof Error ? error.message : "fetch_failed",
-        });
-        failed.push(ticker);
-      }
+
+      const merged = mergeQuoteSnapshot(quoteCache[ticker], quote);
+      quoteCache[ticker] = /** @type {QuoteSnapshot} */ (merged);
+      if (merged?.price != null) okCount += 1;
+      else failed.push(ticker);
+
       quotesPending.delete(ticker);
       renderWatchlist(watchlist, state.holdings, quoteCache);
+
+      // Staggered reveal: short pause between each ticker for visual feedback.
+      if (revealDelay && i < targets.length - 1) {
+        await new Promise((r) => setTimeout(r, revealDelay));
+      }
     }
 
     await setCachedQuotes(
