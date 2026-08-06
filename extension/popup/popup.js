@@ -1166,7 +1166,7 @@ function buildQuoteMetaNodes(quote, ticker = "") {
   priceEl.className = "quote-price";
   if (typeof quote.price === "number") {
     const cur = quote.currency || "USD";
-    priceEl.textContent = `${formatPrice(quote.price)} ${cur}`;
+    priceEl.textContent = `Price ${formatPrice(quote.price)} ${cur}`;
   } else {
     priceEl.textContent = "Price n/a";
   }
