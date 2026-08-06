@@ -11,9 +11,69 @@ from datetime import datetime, timezone
 from typing import Any
 
 import pandas as pd
+import requests
 import yfinance as yf
 
 logger = logging.getLogger("stock_agent.market")
+
+# ---------------------------------------------------------------------------
+# Shared yfinance session with warm crumb — fixes Yahoo rate-limiting of
+# Indian (.NS / .BO) tickers from non-Indian cloud servers (e.g. Render US).
+# Yahoo requires a valid crumb obtained from a prior page visit; without it
+# the v8/v10 chart endpoints return empty data for non-US exchanges.
+# ---------------------------------------------------------------------------
+
+_INDIAN_SUFFIXES = (".NS", ".BO")
+_session: requests.Session | None = None
+_session_warmed: bool = False
+
+
+def _get_session() -> requests.Session:
+    """Return a requests Session with browser-like headers for Yahoo Finance."""
+    global _session
+    if _session is None:
+        _session = requests.Session()
+        _session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;"
+                "q=0.9,image/avif,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Referer": "https://finance.yahoo.com/",
+            "Origin": "https://finance.yahoo.com",
+        })
+    return _session
+
+
+def _warm_session() -> None:
+    """
+    Visit Yahoo Finance once to set cookies/crumb so subsequent Indian ticker
+    requests are not rejected. Called lazily on first Indian ticker fetch.
+    Safe to call multiple times — only warms once per process lifetime.
+    """
+    global _session_warmed
+    if _session_warmed:
+        return
+    try:
+        sess = _get_session()
+        # Hitting the consent/home page plants the necessary cookies.
+        sess.get("https://finance.yahoo.com/", timeout=10)
+        _session_warmed = True
+        logger.info("Yahoo Finance session warmed for Indian ticker fetches")
+    except Exception:
+        logger.warning("Yahoo Finance session warm-up failed; Indian tickers may return no price", exc_info=False)
+        _session_warmed = True  # Don't retry on every call — best-effort only
+
+
+def _is_indian_ticker(symbol: str) -> bool:
+    sym = (symbol or "").strip().upper()
+    return any(sym.endswith(s) for s in _INDIAN_SUFFIXES)
 
 # Keyword / sector maps for yfinance info → grading buckets.
 _CRYPTO_KEYS = (
@@ -147,6 +207,8 @@ def resolve_currency(symbol: str, info: dict[str, Any] | None = None) -> str:
         return "GBP"
     if sym.endswith(".T") or sym.endswith(".TOKYO"):
         return "JPY"
+    if sym.endswith(".NS") or sym.endswith(".BO"):
+        return "INR"
     return "USD"
 
 
@@ -368,8 +430,13 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
     as_of = datetime.now(timezone.utc).isoformat()
     asset_class = "standard"
 
+    # Warm the Yahoo Finance session before fetching Indian tickers to avoid
+    # empty responses from Yahoo's geo-restricted endpoints on cloud servers.
+    if _is_indian_ticker(symbol):
+        _warm_session()
+
     try:
-        stock = yf.Ticker(symbol)
+        stock = yf.Ticker(symbol, session=_get_session())
 
         # Price first: history / fast_info are more reliable than stock.info under load.
         history = _load_history(stock)

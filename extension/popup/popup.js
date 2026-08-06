@@ -1,4 +1,4 @@
-/**
+﻿﻿﻿﻿﻿/**
  * Popup dashboard controller
  * --------------------------
  * Local-only: holdings, Gemini key (via storage.js → chrome.storage.local)
@@ -1635,9 +1635,40 @@ async function onAddTicker() {
     skipStatus: true,
   });
   const quote = quoteCache[ticker];
-  const ok = quote && typeof quote.price === "number" && Number.isFinite(quote.price);
+  const hasPrice = quote && typeof quote.price === "number" && Number.isFinite(quote.price);
 
-  if (!ok || (fetchResult?.failed || []).includes(ticker)) {
+  if (!hasPrice) {
+    // Distinguish a network/API failure (Render cold start, timeout, 5xx) from
+    // a genuinely unknown ticker. Network failures keep the ticker; bad tickers are removed.
+    const errorStr = String(quote?.error || "").toLowerCase();
+    // Also treat price_unavailable on Indian tickers as non-fatal:
+    // Render's US servers are often geo-blocked by Yahoo Finance for .NS/.BO data.
+    const isIndianTicker = ticker.endsWith(".NS") || ticker.endsWith(".BO");
+    const isNetworkError =
+      errorStr.includes("fetch_failed") ||
+      errorStr.includes("cannot reach") ||
+      errorStr.includes("network") ||
+      errorStr.includes("timeout") ||
+      errorStr.includes("503") ||
+      errorStr.includes("502") ||
+      errorStr.includes("500") ||
+      errorStr.includes("failed to fetch") ||
+      errorStr.includes("awake") ||
+      // price_unavailable / empty_snapshot: keep Indian tickers (Render geo-block from Yahoo)
+      // but still reject genuinely bad US/CA tickers that return no price.
+      (isIndianTicker && (errorStr.includes("price_unavailable") || errorStr.includes("empty_snapshot") || errorStr === "")) ||
+      (!quote && (fetchResult?.failed || []).includes(ticker));
+
+    if (isNetworkError) {
+      setStatus(
+        `${ticker} added. Live price unavailable right now (API may be waking up) — grades will load on next refresh.`,
+        "warn",
+        "watchlistAdd",
+        "persistent"
+      );
+      return;
+    }
+
     const pruned = (await getLocalState()).watchlist.filter((t) => t !== ticker);
     const after = await setWatchlist(pruned);
     delete quoteCache[ticker];

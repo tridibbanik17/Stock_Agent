@@ -15,11 +15,22 @@ Manual entry still works for any valid symbol even if it is missing here.
 | **TSXV** | ~1,703 | Venture listings kept |
 | **AMEX** | ~285 | Kept with US dumps |
 | **NEO** | ~14 | CDRs (e.g. `NVDA.NE`) |
-| **Total** | ~11,709 | Rebuild periodically; IPOs/delists go stale |
+| **NSE** | ~2,070 | NSE equity board (`RELIANCE.NS`, `TCS.NS` …) |
+| **BSE** | ~2,315 | BSE main board A/B groups (`RELIANCE.BO`, `ABB.BO` …) |
+| **Total** | ~16,094 | Rebuild periodically; IPOs/delists go stale |
 
 ## Focus
 
-Primary user coverage: **NASDAQ + NYSE + TSX**. AMEX, TSXV, and NEO are kept as extras.
+Primary user coverage: **NASDAQ + NYSE + TSX + NSE + BSE**. AMEX, TSXV, and NEO are kept as extras.
+
+## Indian exchange notes
+
+- NSE tickers use the `.NS` Yahoo Finance suffix (e.g. `RELIANCE.NS`).
+- BSE tickers use the `.BO` suffix with the company's alpha scrip ID (e.g. `RELIANCE.BO`).  
+  For a small number of BSE-only listings without an alpha ID, the numeric BSE code is used (e.g. `500325.BO`).
+- Only main-board A/B group BSE scrips are included; SME, suspended, and odd-lot boards are excluded.
+- Currency for `.NS` and `.BO` tickers is automatically resolved to `INR`.
+- Timezone `Asia/Kolkata` (IST, UTC+5:30) is supported — use `Asia/Kolkata` in the extension scheduler.
 
 ## Rebuild note
 

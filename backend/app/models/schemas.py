@@ -14,7 +14,10 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 MAX_WATCHLIST = 25
 # Max distinct HH:MM slots per day (× up to 7 days ⇒ ≤ 14 emails/week).
 MAX_SEND_TIMES = 2
-TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,11}$")
+# Covers longest Indian tickers e.g. ADANIENTERPRISES.NS (19 chars),
+# BANKOFBARODA.BO (15 chars), 6-digit BSE numeric codes e.g. 500325.BO (9 chars),
+# and standard US/CA tickers (max ~12 chars).
+TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,18}$")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 Frequency = Literal["daily", "weekdays", "weekly", "custom"]
