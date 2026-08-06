@@ -368,8 +368,14 @@ def _peer_fundamentals(symbol: str, local_info: dict[str, Any]) -> dict[str, Any
         return {}
     try:
         peer_info = yf.Ticker(peer_symbol).info or {}
-    except Exception:
-        logger.exception("US peer lookup failed for %s → %s", symbol, peer_symbol)
+    except Exception as exc:
+        # Catch rate limits, 401s, network errors — peer lookup is best-effort.
+        logger.warning(
+            "US peer lookup failed for %s → %s: %s",
+            symbol,
+            peer_symbol,
+            str(exc)[:100],
+        )
         return {}
     if not _looks_like_same_issuer(local_info, peer_info):
         # Indian ADRs often have different short names — skip the name check for them.
@@ -626,9 +632,15 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
         }
     except Exception as exc:
         logger.exception("yfinance failed for %s", symbol)
+        # Last-resort Google Finance fallback for Indian tickers
+        fallback_price = None
+        if _is_indian_ticker(symbol):
+            fallback_price = _google_finance_price(symbol)
+            if fallback_price is not None:
+                fallback_price = round(fallback_price, 2)
         return {
             "ticker": symbol,
-            "price": None,
+            "price": fallback_price,
             "currency": resolve_currency(symbol),
             "pegRatio": None,
             "deRatio": None,
@@ -642,7 +654,7 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             "industry": None,
             "peerSymbol": None,
             "asOf": as_of,
-            "error": str(exc),
+            "error": None if fallback_price is not None else str(exc),
         }
 
 
@@ -655,9 +667,15 @@ def _quote_needs_retry(result: dict[str, Any]) -> bool:
         return True
     if result.get("price") is None:
         return True
-    # Price alone is not enough — incomplete history leaves aboveSma200=None and
-    # under-scores (e.g. HOLD 3/5 → STRONG BUY 4/5 once SMA loads).
+    # If we got a price (possibly via Google Finance fallback) but no SMA,
+    # only retry for non-Indian tickers. Indian tickers that needed the
+    # Google Finance fallback won't have history data no matter how many
+    # retries — yfinance simply doesn't have the ticker.
     if result.get("aboveSma200") is None:
+        ticker = str(result.get("ticker") or "").upper()
+        if ticker.endswith(".NS") or ticker.endswith(".BO"):
+            # Got price via fallback, no history available — don't retry.
+            return False
         return True
     return False
 
