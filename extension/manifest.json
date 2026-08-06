@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Stock Agent",
-  "version": "0.1.60",
+  "version": "0.1.61",
   "description": "A privacy-first stock dashboard that blends AI context with fundamentals to expose value traps and automate your watchlist reports.",
   "icons": {
     "16": "icons/icon16.png",
