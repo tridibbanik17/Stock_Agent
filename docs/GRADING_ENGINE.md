@@ -116,6 +116,27 @@ ETFs start at score 3 (neutral) and only move on SMA and RSI:
 
 Corporate fundamentals (D/E, PEG, ROE) are not applicable to passive funds.
 
+## Informational Warnings (no score impact)
+
+These notes surface risk signals that don't fit cleanly into the 5-factor score but are important for the user to see.
+
+| Condition | Note shown | Excluded for |
+|---|---|---|
+| ROE > 12% AND freeCashflow < 0 | "Caution: strong ROE but negative free cash flow — verify earnings quality." | Banking (FCF meaningless for deposit-takers), Pharma (negative FCF during R&D is structural) |
+| ROE trending downward (current < previous year) | "Warning: Profit efficiency (ROE) is trending downward." | — |
+| SMA window < 200 days | "Trend uses a {N}-day SMA (listing history under 200 sessions)." | — |
+| Cyclical ROE mildly negative (0 to -5%) | "Negative ROE — may reflect commodity cycle trough rather than mismanagement." | Non-cyclical sectors |
+
+**Design choice:** These are informational only. Adding them to the score would require a 6th factor, breaking the clean 0–5 scale. They help users make informed decisions without the system overstepping into "advice."
+
+## Grade Naming Rationale
+
+| Grade | Why this name? |
+|---|---|
+| **STRONG BUY** | Standard analyst language. Implies quality assessment, not a direct instruction. |
+| **HOLD** | Neutral — no action implied. Familiar to any retail investor. |
+| **AVOID** | Deliberately NOT "SELL." "Sell" is a direct financial instruction that implies the user should liquidate a position — creating liability. "Avoid" means "our rules flagged problems" without prescribing action. It protects both the user and the developer. |
+
 ## News Risk Penalty
 
 Headlines from Yahoo Finance RSS (+ Indian media outlets) are scanned for risk keywords:
