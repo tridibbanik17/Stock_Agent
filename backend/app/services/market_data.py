@@ -532,6 +532,92 @@ def _google_finance_price(symbol: str) -> float | None:
         return None
 
 
+# ---------------------------------------------------------------------------
+# Screener.in fallback — fundamentals (PE, ROE, D/E) for Indian tickers
+# missing from Yahoo Finance. Free, no API key, no geo-block.
+# ---------------------------------------------------------------------------
+
+def _screener_fundamentals(symbol: str) -> dict[str, Any]:
+    """
+    Fetch PE, ROE, D/E from Screener.in for Indian tickers.
+    Returns dict with keys: pe, roe, de_ratio, roce, book_value, or empty dict.
+    """
+    import re as _re
+
+    import httpx as _httpx
+
+    base = symbol.strip().upper()
+    for suffix in (".NS", ".BO"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    # Try consolidated first, then standalone
+    html: str | None = None
+    for path in (f"/company/{base}/consolidated/", f"/company/{base}/"):
+        url = f"https://www.screener.in{path}"
+        try:
+            resp = _httpx.get(url, headers=headers, timeout=12, follow_redirects=True)
+            if resp.status_code == 200:
+                html = resp.text
+                break
+        except Exception:
+            continue
+
+    if not html:
+        logger.debug("Screener.in page not found for %s (base=%s)", symbol, base)
+        return {}
+
+    data: dict[str, Any] = {}
+
+    # Extract name-number pairs from Screener's HTML
+    pairs = _re.findall(
+        r'<span\s+class="name"[^>]*>\s*([^<]+?)\s*</span>'
+        r'.*?'
+        r'<span\s+class="[^"]*number[^"]*"[^>]*>\s*([^<]+?)\s*</span>',
+        html,
+        _re.DOTALL,
+    )
+
+    for name, value in pairs:
+        name = name.strip()
+        value = value.strip().replace(",", "").replace("\u20b9", "").strip()
+        try:
+            num = float(value)
+        except (ValueError, TypeError):
+            continue
+
+        if "Stock P/E" in name:
+            data["pe"] = num
+        elif name == "ROE":
+            data["roe"] = num
+        elif name == "ROCE":
+            data["roce"] = num
+        elif "Debt to equity" in name or "Debt / Eq" in name:
+            data["de_ratio"] = num
+
+    if data:
+        logger.info(
+            "Screener.in fundamentals for %s: PE=%s ROE=%s D/E=%s",
+            symbol,
+            data.get("pe"),
+            data.get("roe"),
+            data.get("de_ratio"),
+        )
+    else:
+        logger.debug("Screener.in no ratios parsed for %s", symbol)
+    return data
+
+
 def analyze_ticker(ticker: str) -> dict[str, Any]:
     """Fetch price + core metrics for one symbol. Never touches portfolio lots."""
     symbol = ticker.strip().upper()
@@ -609,6 +695,20 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             de_ratio = None
 
         roe_list = _roe_trend(income_stmt, balance_sheet)
+
+        # Screener.in fallback for Indian tickers with missing fundamentals.
+        # Fills in D/E, ROE when yfinance returns nothing (Yahoo coverage gap).
+        if _is_indian_ticker(symbol) and (de_ratio is None or not roe_list or roe_list == ["N/A", "N/A", "N/A"]):
+            screener = _screener_fundamentals(symbol)
+            if screener:
+                if de_ratio is None and screener.get("de_ratio") is not None:
+                    de_ratio = screener["de_ratio"]
+                if (not roe_list or roe_list == ["N/A", "N/A", "N/A"]) and screener.get("roe") is not None:
+                    roe_list = [f"{screener['roe']}%", "N/A", "N/A"]
+                if peg is None and screener.get("pe") is not None:
+                    # Approximate PEG from PE if we have it (rough — assumes ~15% growth)
+                    # Better than nothing for the grading engine.
+                    pass  # Don't invent PEG from PE alone — leave it None
 
         above_sma, sma_200, sma_window, rsi = _trend_from_history(history, price)
 
