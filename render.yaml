@@ -30,7 +30,7 @@ services:
       - key: DISPATCH_SECRET
         sync: false
       - key: DISPATCH_EARLY_MINUTES
-        value: "10"
+        value: "20"
       - key: DISPATCH_LATE_MINUTES
         value: "120"
       - key: TRUST_PROXY

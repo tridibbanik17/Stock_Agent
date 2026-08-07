@@ -561,55 +561,13 @@ def format_no_change_text(
 
 
 def send_plain_email(to_email: str, subject: str, body: str) -> bool:
-    """Send a plain-text email via Resend, or dry-run log when unset."""
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
-    from_addr = os.getenv(
-        "REPORT_FROM_EMAIL",
-        "Stock Agent Chrome Extension <onboarding@resend.dev>",
-    ).strip()
-
-    if not api_key:
-        logger.warning(
-            "RESEND_API_KEY unset - dry-run email to %s\nSubject: %s\n%s",
-            to_email,
-            subject,
-            body[:2000],
-        )
-        return True
-
-    payload: dict[str, Any] = {
-        "from": from_addr,
-        "to": [to_email],
-        "subject": subject,
-        "text": body,
-    }
-    try:
-        response = httpx.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=30.0,
-        )
-        if response.status_code >= 400:
-            logger.error(
-                "Resend failed status=%s body=%s",
-                response.status_code,
-                response.text[:500],
-            )
-            return False
-        data = {}
-        try:
-            data = response.json()
-        except Exception:
-            pass
-        logger.info("Resend OK to=%s id=%s", to_email, data.get("id"))
-        return True
-    except Exception:
-        logger.exception("Resend request failed for %s", to_email)
-        return False
+    """Send a plain-text email via the configured provider, or dry-run log when unset."""
+    result = _send_email_via_provider(
+        to_email=to_email,
+        subject=subject,
+        text_body=body,
+    )
+    return result.ok
 
 
 def send_report_email(
@@ -620,34 +578,180 @@ def send_report_email(
     html_body: str | None = None,
 ) -> SendResult:
     """
-    Send via Resend HTTP API when RESEND_API_KEY is set.
+    Send via the configured email provider (SES or Resend).
     Otherwise log the report (dry-run) so cron still exercises the pipeline.
     """
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    return _send_email_via_provider(
+        to_email=to_email,
+        subject=subject,
+        text_body=body,
+        html_body=html_body,
+        unsubscribe_url=unsubscribe_url,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Provider-agnostic email sending layer.
+# Priority: AWS SES (if AWS_SES_REGION set) → Resend (if RESEND_API_KEY set) → dry-run.
+# ---------------------------------------------------------------------------
+
+
+def _get_email_provider() -> str:
+    """Determine which email provider to use based on environment variables."""
+    if os.getenv("AWS_SES_REGION", "").strip():
+        return "ses"
+    if os.getenv("RESEND_API_KEY", "").strip():
+        return "resend"
+    return "dry_run"
+
+
+def _send_email_via_provider(
+    *,
+    to_email: str,
+    subject: str,
+    text_body: str,
+    html_body: str | None = None,
+    unsubscribe_url: str | None = None,
+) -> SendResult:
+    """Route email to the configured provider."""
+    provider = _get_email_provider()
     from_addr = os.getenv(
         "REPORT_FROM_EMAIL",
-        "Stock Agent Chrome Extension <onboarding@resend.dev>",
+        "Stock Agent <noreply@stockagent.app>",
     ).strip()
 
-    if not api_key:
+    if provider == "ses":
+        return _send_via_ses(
+            to_email=to_email,
+            from_addr=from_addr,
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            unsubscribe_url=unsubscribe_url,
+        )
+    elif provider == "resend":
+        return _send_via_resend(
+            to_email=to_email,
+            from_addr=from_addr,
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            unsubscribe_url=unsubscribe_url,
+        )
+    else:
         logger.warning(
-            "RESEND_API_KEY unset - dry-run email to %s\nSubject: %s\n%s",
+            "No email provider configured (set AWS_SES_REGION or RESEND_API_KEY) — dry-run to %s\nSubject: %s",
             to_email,
             subject,
-            body[:2000],
         )
         return SendResult(ok=True, dry_run=True)
+
+
+def _send_via_ses(
+    *,
+    to_email: str,
+    from_addr: str,
+    subject: str,
+    text_body: str,
+    html_body: str | None = None,
+    unsubscribe_url: str | None = None,
+) -> SendResult:
+    """Send email via Amazon SES using boto3."""
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+    except ImportError:
+        logger.error("boto3 not installed — cannot send via SES. pip install boto3")
+        return SendResult(ok=False, error="boto3 not installed")
+
+    region = os.getenv("AWS_SES_REGION", "us-east-1").strip()
+    access_key = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+    secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+
+    try:
+        # Use explicit credentials if provided, else rely on instance role / env defaults.
+        kwargs: dict[str, Any] = {"region_name": region, "service_name": "sesv2"}
+        if access_key and secret_key:
+            kwargs["aws_access_key_id"] = access_key
+            kwargs["aws_secret_access_key"] = secret_key
+
+        client = boto3.client(**kwargs)
+
+        # Build the email message
+        content: dict[str, Any] = {
+            "Simple": {
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {
+                    "Text": {"Data": text_body, "Charset": "UTF-8"},
+                },
+            }
+        }
+        if html_body:
+            content["Simple"]["Body"]["Html"] = {"Data": html_body, "Charset": "UTF-8"}
+
+        # Build headers for List-Unsubscribe (Gmail/Outlook native unsubscribe)
+        headers: list[dict[str, str]] = []
+        if unsubscribe_url:
+            headers.append({"Name": "List-Unsubscribe", "Value": f"<{unsubscribe_url}>"})
+            headers.append({"Name": "List-Unsubscribe-Post", "Value": "List-Unsubscribe=One-Click"})
+
+        send_kwargs: dict[str, Any] = {
+            "FromEmailAddress": from_addr,
+            "Destination": {"ToAddresses": [to_email]},
+            "Content": content,
+        }
+        if headers:
+            send_kwargs["ListManagementOptions"] = {}  # Required for headers in SESv2
+            # SESv2 doesn't support List-Unsubscribe via ListManagementOptions directly.
+            # Use email headers instead via the raw message approach, or rely on
+            # SES's built-in subscription management. For simplicity, we'll add
+            # the headers via the EmailTags/Headers parameter if available.
+            # Actually, SESv2 SendEmail supports Headers in the Simple format:
+            send_kwargs["Content"]["Simple"]["Headers"] = headers
+
+        response = client.send_email(**send_kwargs)
+        message_id = response.get("MessageId", "")
+        logger.info("SES OK to=%s message_id=%s", to_email, message_id)
+        return SendResult(ok=True, resend_id=message_id)
+
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        error_msg = e.response["Error"]["Message"]
+        err = f"SES {error_code}: {error_msg}"
+        logger.error("SES failed to=%s error=%s", to_email, err)
+        if os.getenv("GITHUB_ACTIONS"):
+            print(f"::error::{err}", flush=True)
+        return SendResult(ok=False, error=err[:500])
+    except Exception as exc:
+        logger.exception("SES request failed for %s", to_email)
+        if os.getenv("GITHUB_ACTIONS"):
+            print(f"::error::SES exception: {exc}", flush=True)
+        return SendResult(ok=False, error=str(exc)[:500])
+
+
+def _send_via_resend(
+    *,
+    to_email: str,
+    from_addr: str,
+    subject: str,
+    text_body: str,
+    html_body: str | None = None,
+    unsubscribe_url: str | None = None,
+) -> SendResult:
+    """Send email via Resend HTTP API (legacy provider, still supported)."""
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    if not api_key:
+        return SendResult(ok=False, error="RESEND_API_KEY not set")
 
     payload: dict[str, Any] = {
         "from": from_addr,
         "to": [to_email],
         "subject": subject,
-        "text": body,
+        "text": text_body,
     }
     if html_body:
         payload["html"] = html_body
     if unsubscribe_url:
-        # Helps Gmail/Outlook show a native unsubscribe control.
         payload["headers"] = {
             "List-Unsubscribe": f"<{unsubscribe_url}>",
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
@@ -665,11 +769,7 @@ def send_report_email(
         )
         if response.status_code >= 400:
             err = f"Resend HTTP {response.status_code}: {response.text[:300]}"
-            logger.error(
-                "Resend failed status=%s body=%s",
-                response.status_code,
-                response.text[:500],
-            )
+            logger.error("Resend failed status=%s body=%s", response.status_code, response.text[:500])
             if os.getenv("GITHUB_ACTIONS"):
                 print(f"::error::{err}", flush=True)
             return SendResult(ok=False, error=err)
