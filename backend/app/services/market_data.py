@@ -138,20 +138,28 @@ def classify_asset_from_info(info: dict[str, Any] | None, ticker: str = "") -> s
     ).lower()
     blob = f"{sector} {industry} {category} {summary}"
     name_blob = f" {short_name} {long_name} {category} "
+    sym = (ticker or "").strip().upper()
 
-    # Passiveives / funds first — corporate D/E, PEG, ROE do not apply.
-    if quote_type in {"ETF", "MUTUALFUND", "INDEX"}:
-        return "index_etf"
-    if (
-        "etf" in category
-        or "index fund" in category
-        or " exchange traded" in name_blob
-        or " etf" in name_blob
-        or name_blob.endswith("etf ")
-        or " index etf" in name_blob
-        or "index fund" in name_blob
-    ):
-        return "index_etf"
+    # CDR detection: Canadian Depositary Receipts are ETF-wrapped single equities.
+    # yfinance reports quoteType="ETF" for them but they should be graded like
+    # their underlying stock, not as a passive index fund.
+    is_cdr = "cdr" in name_blob or "(cad hedged)" in name_blob
+
+    # Passives / funds first — corporate D/E, PEG, ROE do not apply.
+    # But skip this for CDRs — grade those by their underlying equity.
+    if not is_cdr:
+        if quote_type in {"ETF", "MUTUALFUND", "INDEX"}:
+            return "index_etf"
+        if (
+            "etf" in category
+            or "index fund" in category
+            or " exchange traded" in name_blob
+            or " etf" in name_blob
+            or name_blob.endswith("etf ")
+            or " index etf" in name_blob
+            or "index fund" in name_blob
+        ):
+            return "index_etf"
 
     if quote_type == "CRYPTOCURRENCY":
         return "crypto_proxy"
