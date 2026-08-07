@@ -25,6 +25,17 @@ Each factor contributes +1 when healthy, 0 when missing/neutral, and may subtrac
 
 **Bonus/penalty:** News headlines with risk keywords (lawsuit, probe, fraud, SEBI, etc.) can subtract up to 2 points.
 
+**Factor full-forms:** 
+
+| # | Factor | Full forms | 
+|---|--------|-----------------|
+| 1 | **D/E ratio** | Debt-to-Equity Ratio |
+| 2 | **PEG ratio** | Price/Earnings-to-Growth Ratio | 
+| 3 | **ROE trend** | Return on Equity Trend | 
+| 4 | **200-day SMA** | Simple Moving Average |
+| 5 | **RSI (14-day)** | 14-day Relative Strength Index | 
+
+
 ## Sector-Aware Thresholds
 
 Different industries have structurally different leverage, profitability, and valuation norms.  
