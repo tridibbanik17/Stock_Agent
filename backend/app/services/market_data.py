@@ -211,6 +211,24 @@ def classify_asset_from_info(info: dict[str, Any] | None, ticker: str = "") -> s
     # their underlying stock, not as a passive index fund.
     is_cdr = "cdr" in name_blob or "(cad hedged)" in name_blob
 
+    # CDRs with no sector/industry: classify by their underlying US equity.
+    # e.g. MSTR.TO (Strategy CDR) → inherits crypto_proxy from MSTR.
+    if is_cdr and not sector and not industry:
+        # Try to classify based on the name content (faster than a yfinance call).
+        if any(k in blob for k in _CRYPTO_KEYS) or "strategy" in short_name or "microstrategy" in blob:
+            return "crypto_proxy"
+        # Check name for tech-related terms
+        cdr_blob = f"{short_name} {long_name}"
+        cdr_tech_hints = ("computer", "semiconductor", "software", "nvidia", "tech", "digital", "intel", "amd", "meta", "apple", "microsoft", "google", "amazon", "tesla")
+        if any(hint in cdr_blob for hint in cdr_tech_hints):
+            return "growth_tech"
+        if any(k in cdr_blob for k in ("bank", "financial", "insurance")):
+            return "banking"
+        if any(k in cdr_blob for k in ("pharma", "health", "medical", "biotech")):
+            return "pharma"
+        # Fallback: CDR without detectable sector → standard (still not index_etf).
+        return "standard"
+
     # Passives / funds first — corporate D/E, PEG, ROE do not apply.
     # But skip this for CDRs — grade those by their underlying equity.
     if not is_cdr:

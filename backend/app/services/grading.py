@@ -495,6 +495,25 @@ def _finalize_grade(
     news_risks: list[dict[str, str]],
 ) -> dict[str, Any]:
     score = max(0, min(5, int(score)))
+
+    # If all scoring inputs are missing, don't assign a failing grade.
+    # "INSUFFICIENT DATA" is more honest than "AVOID" when we couldn't analyze.
+    missing_note = next((n for n in notes if n.startswith("Missing data:")), "")
+    all_missing = all(
+        k in missing_note
+        for k in ("D/E", "PEG", "ROE", "200-SMA", "RSI")
+    ) if missing_note else False
+
+    if all_missing and score == 0:
+        return {
+            "grade": "INSUFFICIENT_DATA",
+            "score": 0,
+            "verdict": "INSUFFICIENT DATA",
+            "notes": ["All core metrics unavailable — cannot grade this ticker reliably."] + notes,
+            "assetClass": asset,
+            "newsRisks": (news_risks or [])[:3],
+        }
+
     if score >= 4:
         grade = "STRONG_BUY"
         verdict = f"STRONG BUY ({score}/5)"
@@ -508,7 +527,6 @@ def _finalize_grade(
         if asset == "index_etf":
             notes.insert(0, "Neutral index/ETF posture on SMA and RSI.")
         else:
-            # Contextual HOLD message based on what factors scored vs missed.
             hold_msg = _contextual_hold_message(notes, asset)
             notes.insert(0, hold_msg)
     else:
