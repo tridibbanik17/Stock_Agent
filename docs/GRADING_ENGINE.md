@@ -133,7 +133,7 @@ These notes surface risk signals that don't fit cleanly into the 5-factor score 
 
 | Condition | Note shown | Excluded for |
 |---|---|---|
-| ROE > 12% AND freeCashflow < 0 | "Caution: strong ROE but negative free cash flow — verify earnings quality." | Banking (FCF meaningless for deposit-takers), Pharma (negative FCF during R&D is structural) |
+| ROE > 12% AND freeCashflow < 0 | "Caution: strong ROE but negative free cash flow — verify earnings quality." | Banking (FCF meaningless for deposit-takers), Pharma (negative FCF during R&D is structural), Capital-intensive (infrastructure build-out capex), Cyclical (extraction/mining capex cycles) |
 | ROE trending downward (current < previous year) | "Warning: Profit efficiency (ROE) is trending downward." | — |
 | SMA window < 200 days | "Trend uses a {N}-day SMA (listing history under 200 sessions)." | — |
 | Cyclical ROE mildly negative (0 to -5%) | "Negative ROE — may reflect commodity cycle trough rather than mismanagement." | Non-cyclical sectors |

@@ -419,9 +419,11 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
     # Only note this when both data points are available — never penalize missing FCF.
     fcf = metrics.get("freeCashflow")
     if isinstance(fcf, (int, float)) and fcf < 0 and roes and roes[0] > 12:
-        if asset not in {"banking", "pharma"}:
-            # Banks: FCF is meaningless (deposits/lending distort cash flow statement).
+        if asset not in {"banking", "pharma", "capital_intensive", "cyclical"}:
+            # Banking: FCF is meaningless (deposits/lending distort cash flow statement).
             # Pharma: Negative FCF common during heavy R&D investment phases.
+            # Capital-intensive: Utilities/REITs run negative FCF during infrastructure build-outs.
+            # Cyclical: Energy/mining capex cycles cause temporary negative FCF.
             notes.append(
                 "Caution: strong ROE but negative free cash flow — verify earnings quality."
             )
