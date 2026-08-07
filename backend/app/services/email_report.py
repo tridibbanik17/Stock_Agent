@@ -142,6 +142,7 @@ def format_report_text(
         "STOCK AGENT CHROME EXTENSION — WATCHLIST REPORT",
         "=" * 46,
         _grade_summary_line(quotes),
+        _watchlist_health_line(quotes),
         "",
     ]
     for _key, title, group in _quotes_by_urgency(quotes):
@@ -290,6 +291,40 @@ def _grade_summary_line(quotes: list[dict[str, Any]]) -> str:
     return " · ".join(parts) if parts else f"{len(quotes)} tickers"
 
 
+def _watchlist_health_line(quotes: list[dict[str, Any]]) -> str:
+    """
+    Aggregate watchlist health signal:
+    - % above 200-SMA (market breadth proxy)
+    - Weighted health score
+    """
+    total = len(quotes)
+    if total == 0:
+        return ""
+
+    strong = sum(1 for q in quotes if quote_grade(q) == "STRONG_BUY")
+    hold = sum(1 for q in quotes if quote_grade(q) == "HOLD")
+    avoid = sum(1 for q in quotes if quote_grade(q) == "AVOID")
+
+    above_sma = sum(1 for q in quotes if q.get("aboveSma200") is True)
+    sma_counted = sum(1 for q in quotes if q.get("aboveSma200") is not None)
+
+    # Weighted health: strong=100, hold=60, avoid=20
+    health_score = int(
+        ((strong * 100) + (hold * 60) + (avoid * 20)) / total
+    )
+
+    parts = [f"Watchlist health: {health_score}%"]
+    if sma_counted > 0:
+        sma_pct = int((above_sma / sma_counted) * 100)
+        parts.append(f"{sma_pct}% above 200-SMA")
+        if sma_pct < 30:
+            parts.append("broad market weakness")
+        elif sma_pct > 70:
+            parts.append("strong market breadth")
+
+    return " · ".join(parts)
+
+
 def build_report_subject(report_day, quotes: list[dict[str, Any]]) -> str:
     """Inbox-friendly subject with local date + grade mix."""
     month = report_day.strftime("%b")
@@ -353,6 +388,7 @@ def format_report_html(
         summary_html = ""
     else:
         summary = _grade_summary_line(quotes)
+        health = _watchlist_health_line(quotes)
         intro = (
             "<p style='margin:0 0 12px;color:#334155;font-size:14px;line-height:1.5;'>"
             "Rule-based grades for your watchlist. "
@@ -360,10 +396,16 @@ def format_report_html(
             "</p>"
         )
         title = "Watchlist report"
+        health_html = (
+            f"<p style='margin:0 0 4px;font-size:12px;color:#64748b;'>"
+            f"{_esc(health)}"
+            f"</p>"
+        ) if health else ""
         summary_html = (
-            f"<p style='margin:0 0 16px;font-size:13px;color:#0f172a;font-weight:650;'>"
+            f"<p style='margin:0 0 4px;font-size:13px;color:#0f172a;font-weight:650;'>"
             f"{_esc(summary)}"
             f"</p>"
+            f"{health_html}"
         )
 
     card_sections: list[str] = []
