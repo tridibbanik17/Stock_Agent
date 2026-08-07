@@ -238,39 +238,89 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         return _finalize_grade(score, notes, asset, risky_news or news_items)
 
     # --- Debt-to-Equity ---
+    # Thresholds are sector-aware because leverage norms differ dramatically.
+    # Banking: leverage IS the business model (D/E 5–15 is normal).
+    # Capital-intensive: utilities/telecom carry debt for infrastructure.
+    # Pharma: typically low debt, high R&D spend funded by cash flows.
+    # Growth tech: should be lean; high debt is a yellow flag.
+    # Standard/conglomerate: moderate leverage acceptable.
     if isinstance(de_ratio, (int, float)):
-        if asset == "capital_intensive":
-            # Telecom / towers: higher leverage is normal.
+        if asset == "banking":
+            # Banks use leverage structurally; only flag extremes.
+            if de_ratio < 15.0:
+                score += 1
+            else:
+                notes.append("Leverage is unusually high even for a financial institution.")
+        elif asset == "capital_intensive":
             if de_ratio < 3.0:
                 score += 1
             else:
                 notes.append("Debt load is elevated even for a capital-intensive name.")
         elif asset == "crypto_proxy":
-            # Corporate ROE/D-E is noisy for BTC proxies — soft weight.
             if de_ratio < 2.5:
                 score += 1
             else:
                 notes.append("Balance-sheet leverage is high; treat crypto-proxy debt carefully.")
+        elif asset == "pharma":
+            # Pharma should be relatively low-debt (R&D funded by cash).
+            if de_ratio < 1.0:
+                score += 1
+            elif de_ratio > 2.0:
+                notes.append("Debt is high for a pharma/biotech — may signal acquisition-driven leverage.")
+        elif asset == "conglomerate":
+            # Diversified businesses can carry more debt across segments.
+            if de_ratio < 2.0:
+                score += 1
+            elif de_ratio > 3.5:
+                notes.append("Leverage is elevated even for a diversified conglomerate.")
+        elif asset == "growth_tech":
+            # Tech should be lean — debt over 1.0 is notable.
+            if de_ratio < 1.0:
+                score += 1
+            elif de_ratio > 2.0:
+                notes.append("High debt for a growth name — limits flexibility for R&D investment.")
         else:
+            # Standard (consumer, industrials, materials, energy, etc.)
             if de_ratio < 1.5:
                 score += 1
-            else:
+            elif de_ratio > 2.5:
                 notes.append("High debt burden limits financial flexibility.")
     else:
-        missing_data.append("D/E")
+        if asset != "banking":
+            missing_data.append("D/E")
+        # Banking without D/E is still gradeable — it's just one signal.
 
     # --- PEG ---
+    # Sector-aware valuation thresholds.
     if isinstance(peg_ratio, (int, float)):
         if asset == "growth_tech":
+            # Growth names get more room — high PE is expected if growth backs it up.
             if peg_ratio < 1.5:
                 score += 1
             elif peg_ratio > 3.0:
                 notes.append("Growth multiple looks stretched vs expected earnings growth.")
         elif asset == "crypto_proxy":
-            # PEG often meaningless — skip hard fail, soft credit only.
             if peg_ratio < 2.0:
                 score += 1
+        elif asset == "pharma":
+            # Pharma PEG is tricky — pipeline optionality isn't captured in EPS growth.
+            if peg_ratio < 1.5:
+                score += 1
+            elif peg_ratio > 3.0:
+                notes.append("Valuation is stretched relative to near-term earnings growth.")
+        elif asset == "banking":
+            # Banks rarely have high PEG — they're valued on P/B and NIM.
+            if peg_ratio < 1.2:
+                score += 1
+            elif peg_ratio > 2.0:
+                notes.append("Valuation is rich relative to growth for a financial.")
+        elif asset == "conglomerate":
+            if peg_ratio < 1.5:
+                score += 1
+            elif peg_ratio > 2.5:
+                notes.append("Valuation premium may not be justified by segment growth.")
         else:
+            # Standard sectors
             if peg_ratio < 1.0:
                 score += 1
             elif peg_ratio > 2.0:
@@ -279,13 +329,48 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         missing_data.append("PEG")
 
     # --- ROE trend ---
+    # Sector-aware profitability expectations.
     if asset == "crypto_proxy":
         notes.append("ROE is a weak signal for crypto-proxy / treasury strategies - discounted.")
         if roes and roes[0] > 10:
             score += 1
         elif not roes:
             missing_data.append("ROE")
+    elif asset == "banking":
+        # Banks: ROE 10–15% is solid; >15% is excellent.
+        if roes:
+            if roes[0] > 12:
+                score += 1
+            if roes[0] < 5:
+                notes.append("ROE below 5% is weak for a financial institution.")
+            elif len(roes) >= 2 and roes[0] < roes[1]:
+                notes.append("Warning: Return on equity is trending downward.")
+        else:
+            missing_data.append("ROE")
+    elif asset == "pharma":
+        # Pharma: ROE varies wildly (biotech can be negative pre-revenue).
+        if roes:
+            if roes[0] > 12:
+                score += 1
+            if roes[0] < 0:
+                notes.append("Negative ROE — common for early-stage biotech, but monitor cash runway.")
+            elif len(roes) >= 2 and roes[0] < roes[1]:
+                notes.append("Warning: Profit efficiency (ROE) is trending downward.")
+        else:
+            missing_data.append("ROE")
+    elif asset == "capital_intensive":
+        # Utilities/telecom: ROE 8–12% is acceptable due to regulated returns.
+        if roes:
+            if roes[0] > 8:
+                score += 1
+            if roes[0] < 0:
+                notes.append("Company is posting negative ROE (net losses).")
+            elif len(roes) >= 2 and roes[0] < roes[1]:
+                notes.append("Warning: Profit efficiency (ROE) is trending downward.")
+        else:
+            missing_data.append("ROE")
     else:
+        # Growth tech, conglomerate, standard — 15%+ is the bar.
         if roes:
             if roes[0] > 15:
                 score += 1
@@ -421,6 +506,12 @@ def _contextual_hold_message(notes: list[str], asset: str) -> str:
         return "Stable cash flows, but no clear catalyst for re-rating right now."
     if asset == "crypto_proxy":
         return "Neutral on metrics — crypto proxy pricing remains sentiment-driven."
+    if asset == "banking":
+        return "Financials are adequate but no clear edge vs peers at this valuation."
+    if asset == "pharma":
+        return "Pipeline and margins are acceptable, but no breakout catalyst visible."
+    if asset == "conglomerate":
+        return "Diversified business is stable, but segment mix offers no strong signal."
     return "Balanced scorecard — no strong buy or sell signal at this time."
 
 

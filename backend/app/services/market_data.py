@@ -116,6 +116,49 @@ _GROWTH_INDUSTRY_KEYS = (
     "auto manufacturers",
     "scientific & technical instruments",
 )
+# Banking / financial institutions — leverage is structural, not a red flag.
+_BANKING_INDUSTRY_KEYS = (
+    "bank",
+    "banks",
+    "banking",
+    "diversified banks",
+    "regional banks",
+    "commercial bank",
+    "savings & loans",
+    "credit services",
+    "financial conglomerates",
+    "investment banking",
+    "asset management",
+    "insurance",
+    "life insurance",
+    "property & casualty",
+    "reinsurance",
+    "capital markets",
+    "mortgage",
+    "financial data",
+    "financial exchange",
+)
+# Pharma / biotech — high R&D spend, patents drive value, D/E norms differ.
+_PHARMA_INDUSTRY_KEYS = (
+    "drug manufacturers",
+    "pharmaceuticals",
+    "pharmaceutical",
+    "biotechnology",
+    "biotech",
+    "medical devices",
+    "diagnostics & research",
+    "health information services",
+    "medical instruments",
+    "medical distribution",
+)
+# Conglomerates — diversified businesses, moderate leverage acceptable.
+_CONGLOMERATE_INDUSTRY_KEYS = (
+    "conglomerates",
+    "conglomerate",
+    "diversified industrials",
+    "industrial conglomerates",
+    "general industrials",
+)
 
 
 def classify_asset_from_info(info: dict[str, Any] | None, ticker: str = "") -> str:
@@ -166,12 +209,24 @@ def classify_asset_from_info(info: dict[str, Any] | None, ticker: str = "") -> s
     if any(k in blob for k in _CRYPTO_KEYS) or "crypto" in industry:
         return "crypto_proxy"
 
+    # Banking / financials — D/E norms are structural (leverage IS the business).
+    if sector == "financial services" or any(k in industry for k in _BANKING_INDUSTRY_KEYS):
+        return "banking"
+
+    # Pharma / biotech — R&D heavy, patent cliffs, different valuation.
+    if sector == "healthcare" or any(k in industry for k in _PHARMA_INDUSTRY_KEYS):
+        return "pharma"
+
     if sector in _CAPITAL_SECTORS or any(k in industry for k in _CAPITAL_INDUSTRY_KEYS):
         return "capital_intensive"
     if sector == "communication services" and any(
         k in industry for k in ("telecom", "telephone", "wireless")
     ):
         return "capital_intensive"
+
+    # Conglomerates — Reliance, Tata, Adani, Berkshire, etc.
+    if any(k in industry for k in _CONGLOMERATE_INDUSTRY_KEYS):
+        return "conglomerate"
 
     if sector == "technology" or any(k in industry for k in _GROWTH_INDUSTRY_KEYS):
         return "growth_tech"
