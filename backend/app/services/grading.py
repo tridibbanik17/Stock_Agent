@@ -414,6 +414,18 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         else:
             missing_data.append("ROE")
 
+    # --- Free Cash Flow warning (informational, no score impact) ---
+    # High ROE + negative FCF can signal financial engineering or aggressive accounting.
+    # Only note this when both data points are available — never penalize missing FCF.
+    fcf = metrics.get("freeCashflow")
+    if isinstance(fcf, (int, float)) and fcf < 0 and roes and roes[0] > 12:
+        if asset not in {"banking", "pharma"}:
+            # Banks: FCF is meaningless (deposits/lending distort cash flow statement).
+            # Pharma: Negative FCF common during heavy R&D investment phases.
+            notes.append(
+                "Caution: strong ROE but negative free cash flow — verify earnings quality."
+            )
+
     # --- 200-day SMA (or shorter window for new listings / CDRs) ---
     if above_sma is True:
         score += 1

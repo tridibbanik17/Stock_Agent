@@ -802,6 +802,9 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
 
         above_sma, sma_200, sma_window, rsi = _trend_from_history(history, price)
 
+        # Free cash flow — used for warning notes only (not scored).
+        free_cashflow = _safe_float(info.get("freeCashflow"))
+
         return {
             "ticker": symbol,
             "price": price,
@@ -809,6 +812,7 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             "pegRatio": peg,
             "deRatio": de_ratio,
             "roeTrend": roe_list,
+            "freeCashflow": free_cashflow,
             "aboveSma200": above_sma,
             "sma200": sma_200,
             "smaWindow": sma_window,
