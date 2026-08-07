@@ -159,6 +159,29 @@ _CONGLOMERATE_INDUSTRY_KEYS = (
     "industrial conglomerates",
     "general industrials",
 )
+# Cyclical / commodity sectors — energy, materials, mining.
+# ROE and margins swing with commodity cycles; trough-year metrics are misleading.
+_CYCLICAL_INDUSTRY_KEYS = (
+    "oil & gas",
+    "oil & gas integrated",
+    "oil & gas e&p",
+    "oil & gas refining",
+    "oil & gas midstream",
+    "oil & gas equipment",
+    "mining",
+    "gold",
+    "silver",
+    "copper",
+    "steel",
+    "aluminum",
+    "specialty chemicals",
+    "agricultural inputs",
+    "coal",
+    "uranium",
+    "industrial metals",
+    "other precious metals",
+    "other industrial metals",
+)
 
 
 def classify_asset_from_info(info: dict[str, Any] | None, ticker: str = "") -> str:
@@ -227,6 +250,10 @@ def classify_asset_from_info(info: dict[str, Any] | None, ticker: str = "") -> s
     # Conglomerates — Reliance, Tata, Adani, Berkshire, etc.
     if any(k in industry for k in _CONGLOMERATE_INDUSTRY_KEYS):
         return "conglomerate"
+
+    # Cyclical / commodity — energy, mining, materials (ROE swings with cycles).
+    if sector in {"energy", "basic materials"} or any(k in industry for k in _CYCLICAL_INDUSTRY_KEYS):
+        return "cyclical"
 
     if sector == "technology" or any(k in industry for k in _GROWTH_INDUSTRY_KEYS):
         return "growth_tech"

@@ -238,82 +238,97 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         return _finalize_grade(score, notes, asset, risky_news or news_items)
 
     # --- Debt-to-Equity ---
-    # Thresholds are sector-aware because leverage norms differ dramatically.
-    # Banking: leverage IS the business model (D/E 5–15 is normal).
-    # Capital-intensive: utilities/telecom carry debt for infrastructure.
-    # Pharma: typically low debt, high R&D spend funded by cash flows.
-    # Growth tech: should be lean; high debt is a yellow flag.
-    # Standard/conglomerate: moderate leverage acceptable.
+    # All D/E values from yfinance are ratios (Total Debt / Total Equity).
+    # A value of 1.5 means $1.50 debt per $1 equity, NOT a percentage.
+    # Thresholds are sector-aware because structural leverage norms differ.
     if isinstance(de_ratio, (int, float)):
         if asset == "banking":
-            # Banks use leverage structurally; only flag extremes.
+            # Banks use leverage structurally (deposits are liabilities).
+            # D/E 5–15 is normal; only flag extreme outliers.
             if de_ratio < 15.0:
                 score += 1
             else:
                 notes.append("Leverage is unusually high even for a financial institution.")
         elif asset == "capital_intensive":
+            # Utilities/telecom carry infrastructure debt at regulated rates.
             if de_ratio < 3.0:
                 score += 1
-            else:
+            elif de_ratio > 4.0:
                 notes.append("Debt load is elevated even for a capital-intensive name.")
         elif asset == "crypto_proxy":
-            if de_ratio < 2.5:
+            # Crypto treasuries use convertible notes; D/E swings with BTC price.
+            # Soft signal only — don't hard-penalize volatility-driven D/E changes.
+            if de_ratio < 3.0:
                 score += 1
-            else:
-                notes.append("Balance-sheet leverage is high; treat crypto-proxy debt carefully.")
+            # No penalty — D/E is unreliable for BTC treasury strategies.
         elif asset == "pharma":
-            # Pharma should be relatively low-debt (R&D funded by cash).
             if de_ratio < 1.0:
                 score += 1
             elif de_ratio > 2.0:
                 notes.append("Debt is high for a pharma/biotech — may signal acquisition-driven leverage.")
+        elif asset == "cyclical":
+            # Energy/mining: debt is normal for capital-heavy extraction.
+            if de_ratio < 2.0:
+                score += 1
+            elif de_ratio > 3.5:
+                notes.append("Leverage is high for a cyclical — risky if commodity prices drop.")
         elif asset == "conglomerate":
-            # Diversified businesses can carry more debt across segments.
             if de_ratio < 2.0:
                 score += 1
             elif de_ratio > 3.5:
                 notes.append("Leverage is elevated even for a diversified conglomerate.")
         elif asset == "growth_tech":
-            # Tech should be lean — debt over 1.0 is notable.
             if de_ratio < 1.0:
                 score += 1
             elif de_ratio > 2.0:
                 notes.append("High debt for a growth name — limits flexibility for R&D investment.")
         else:
-            # Standard (consumer, industrials, materials, energy, etc.)
+            # Standard (consumer, industrials, etc.)
             if de_ratio < 1.5:
                 score += 1
             elif de_ratio > 2.5:
                 notes.append("High debt burden limits financial flexibility.")
     else:
-        if asset != "banking":
+        if asset not in {"banking", "crypto_proxy"}:
             missing_data.append("D/E")
-        # Banking without D/E is still gradeable — it's just one signal.
 
     # --- PEG ---
-    # Sector-aware valuation thresholds.
-    if isinstance(peg_ratio, (int, float)):
+    # Guard against NaN/Inf: yfinance can return extreme values for low-growth stocks.
+    peg_valid = (
+        isinstance(peg_ratio, (int, float))
+        and peg_ratio > 0
+        and peg_ratio < 100  # Sanity cap — PEG > 100 is meaningless noise.
+    )
+    if peg_valid:
         if asset == "growth_tech":
-            # Growth names get more room — high PE is expected if growth backs it up.
             if peg_ratio < 1.5:
                 score += 1
             elif peg_ratio > 3.0:
                 notes.append("Growth multiple looks stretched vs expected earnings growth.")
         elif asset == "crypto_proxy":
+            # PEG is largely meaningless for BTC treasuries — soft credit only.
             if peg_ratio < 2.0:
                 score += 1
         elif asset == "pharma":
-            # Pharma PEG is tricky — pipeline optionality isn't captured in EPS growth.
+            # Pipeline optionality isn't captured in near-term EPS growth.
             if peg_ratio < 1.5:
                 score += 1
             elif peg_ratio > 3.0:
-                notes.append("Valuation is stretched relative to near-term earnings growth.")
+                notes.append("Valuation stretched relative to near-term earnings growth (pipeline upside not captured in PEG).")
         elif asset == "banking":
-            # Banks rarely have high PEG — they're valued on P/B and NIM.
-            if peg_ratio < 1.2:
+            # Banks are valued on P/B and NIM, not growth multiples.
+            # PEG is a weak signal — only reward very cheap, never penalize.
+            if peg_ratio < 1.0:
                 score += 1
-            elif peg_ratio > 2.0:
-                notes.append("Valuation is rich relative to growth for a financial.")
+            # No penalty for high PEG — banks naturally have high PEG due to
+            # low single-digit growth and moderate PE (PE 12 / Growth 5% = PEG 2.4).
+        elif asset == "cyclical":
+            # Cyclicals have volatile earnings — PEG is unreliable mid-cycle.
+            # Only reward clearly cheap; don't penalize during trough years.
+            if peg_ratio < 1.0:
+                score += 1
+            elif peg_ratio > 4.0:
+                notes.append("Valuation looks expensive even accounting for cyclical recovery.")
         elif asset == "conglomerate":
             if peg_ratio < 1.5:
                 score += 1
@@ -326,10 +341,12 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
             elif peg_ratio > 2.0:
                 notes.append("The stock is expensive relative to expected growth (PEG).")
     else:
-        missing_data.append("PEG")
+        if asset not in {"banking", "crypto_proxy", "cyclical"}:
+            # PEG unavailable is common for negative-earnings biotech, pre-profit tech.
+            # Don't count as "missing" for sectors where PEG is structurally unreliable.
+            missing_data.append("PEG")
 
     # --- ROE trend ---
-    # Sector-aware profitability expectations.
     if asset == "crypto_proxy":
         notes.append("ROE is a weak signal for crypto-proxy / treasury strategies - discounted.")
         if roes and roes[0] > 10:
@@ -337,7 +354,7 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         elif not roes:
             missing_data.append("ROE")
     elif asset == "banking":
-        # Banks: ROE 10–15% is solid; >15% is excellent.
+        # Banks: ROE 10–15% is solid; >15% is excellent; <5% is a red flag.
         if roes:
             if roes[0] > 12:
                 score += 1
@@ -348,7 +365,7 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         else:
             missing_data.append("ROE")
     elif asset == "pharma":
-        # Pharma: ROE varies wildly (biotech can be negative pre-revenue).
+        # Pharma: ROE varies wildly. Pre-revenue biotech will be negative — that's normal.
         if roes:
             if roes[0] > 12:
                 score += 1
@@ -367,6 +384,22 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
                 notes.append("Company is posting negative ROE (net losses).")
             elif len(roes) >= 2 and roes[0] < roes[1]:
                 notes.append("Warning: Profit efficiency (ROE) is trending downward.")
+        else:
+            missing_data.append("ROE")
+    elif asset == "cyclical":
+        # Energy/mining: ROE swings with commodity prices.
+        # During trough years, ROE = 2–5% is normal, not a red flag.
+        # Only flag genuinely negative ROE or clear deterioration.
+        if roes:
+            if roes[0] > 8:
+                score += 1
+            if roes[0] < -5:
+                notes.append("Deep negative ROE — may signal structural issues beyond the cycle.")
+            elif roes[0] < 0:
+                notes.append("Negative ROE — may reflect commodity cycle trough rather than mismanagement.")
+            elif len(roes) >= 2 and roes[0] < roes[1] * 0.5:
+                # Only flag if ROE dropped by more than half (not normal volatility)
+                notes.append("Warning: ROE declined significantly — check if cyclical or structural.")
         else:
             missing_data.append("ROE")
     else:
@@ -512,6 +545,8 @@ def _contextual_hold_message(notes: list[str], asset: str) -> str:
         return "Pipeline and margins are acceptable, but no breakout catalyst visible."
     if asset == "conglomerate":
         return "Diversified business is stable, but segment mix offers no strong signal."
+    if asset == "cyclical":
+        return "Commodity-exposed name in a neutral cycle position — wait for clearer trend."
     return "Balanced scorecard — no strong buy or sell signal at this time."
 
 

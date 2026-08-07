@@ -40,45 +40,61 @@ Classification is automatic from yfinance metadata (`sector`, `industry`, `quote
 | `banking` | sector = Financial Services, or industry contains bank/insurance/credit | HDFCBANK.NS, JPM, TD.TO |
 | `pharma` | sector = Healthcare, or industry contains drug/biotech/medical | SUNPHARMA.NS, JNJ, PFE |
 | `capital_intensive` | sector = Utilities/Real Estate, or telecom/tower industry | NTPC.NS, BCE.TO, NEE |
+| `cyclical` | sector = Energy/Basic Materials, or oil/gas/mining/metals industry | ONGC.NS, XOM, VALE |
 | `conglomerate` | industry contains conglomerate/diversified industrials | Berkshire, Tata group |
 | `growth_tech` | sector = Technology, or semiconductor/software/internet/auto industry | TCS.NS, NVDA, SHOP.TO |
 | `crypto_proxy` | quoteType = CRYPTOCURRENCY, or crypto keywords in description | MSTR, BTC-USD |
-| `standard` | Everything else (consumer, energy, materials, industrials) | ITC.NS, ONGC.NS, WMT |
+| `standard` | Everything else (consumer staples/cyclical, industrials not classified above) | ITC.NS, WMT, HD |
 
 **CDR override:** Canadian Depositary Receipts (quoteType=ETF but name contains "CDR" or "CAD Hedged") are graded as their underlying equity, not as ETFs.
 
 ### D/E (Debt-to-Equity) Thresholds
 
+All D/E values are **ratios** (Total Debt / Total Equity), not percentages.  
+A value of 1.5 means $1.50 debt per $1 equity. yfinance always returns this as a decimal ratio.
+
 | Asset Class | +1 if D/E < | Warning if D/E > | Rationale |
 |---|---|---|---|
-| **banking** | 15.0 | 15.0 | Leverage IS the business model for financials |
-| **capital_intensive** | 3.0 | 3.0 | Infrastructure debt is normal for utilities/telecom |
-| **crypto_proxy** | 2.5 | 2.5 | Treasury strategies tolerate moderate leverage |
+| **banking** | 15.0 | 15.0 | Deposits are liabilities — leverage IS the business model |
+| **capital_intensive** | 3.0 | 4.0 | Infrastructure debt at regulated rates is structural |
+| **crypto_proxy** | 3.0 | — (no penalty) | D/E swings with BTC price via convertible notes; unreliable signal |
+| **cyclical** | 2.0 | 3.5 | Energy/mining carry extraction capex debt |
 | **conglomerate** | 2.0 | 3.5 | Diversified segments spread debt risk |
 | **pharma** | 1.0 | 2.0 | R&D-funded, should be relatively lean |
 | **growth_tech** | 1.0 | 2.0 | Tech should be lean; debt limits R&D flexibility |
-| **standard** | 1.5 | 2.5 | General threshold for consumer/energy/industrials |
+| **standard** | 1.5 | 2.5 | General threshold for consumer/industrials |
 
 ### PEG (Price/Earnings-to-Growth) Thresholds
 
-| Asset Class | +1 if PEG < | Warning if PEG > | Rationale |
-|---|---|---|---|
-| **growth_tech** | 1.5 | 3.0 | High PE expected if growth backs it up |
-| **pharma** | 1.5 | 3.0 | Pipeline optionality not fully captured in EPS |
-| **banking** | 1.2 | 2.0 | Banks valued on P/B and NIM, not growth multiple |
-| **conglomerate** | 1.5 | 2.5 | Segment diversity should earn a modest premium |
-| **crypto_proxy** | 2.0 | — | PEG often meaningless; soft credit only |
-| **standard** | 1.0 | 2.0 | Traditional value threshold |
+**Important:** PEG is only scored when `0 < PEG < 100`. Values above 100 are treated as noise (undefined earnings growth or rounding artifacts). Negative PEG values (from negative growth) are also excluded.
+
+| Asset Class | +1 if PEG < | Warning if PEG > | Penalty for missing? | Notes |
+|---|---|---|---|---|
+| **growth_tech** | 1.5 | 3.0 | Yes | High PE expected if growth backs it up |
+| **pharma** | 1.5 | 3.0 | Yes | Pipeline optionality not captured in EPS |
+| **banking** | 1.0 | — (no penalty) | No | Banks valued on P/B and NIM, not growth multiple. PEG is a weak signal. |
+| **cyclical** | 1.0 | 4.0 | No | Earnings swing with commodity cycle — PEG is unreliable mid-cycle |
+| **conglomerate** | 1.5 | 2.5 | Yes | Segment diversity earns a modest premium |
+| **crypto_proxy** | 2.0 | — (no penalty) | No | PEG is largely meaningless for BTC treasuries |
+| **standard** | 1.0 | 2.0 | Yes | Traditional value threshold |
 
 ### ROE (Return on Equity) Thresholds
 
-| Asset Class | +1 if ROE > | Notes |
-|---|---|---|
-| **banking** | 12% | ROE 10–15% is solid for banks; <5% is a red flag |
-| **capital_intensive** | 8% | Regulated returns cap ROE for utilities |
-| **pharma** | 12% | Negative ROE OK for pre-revenue biotech (noted) |
-| **crypto_proxy** | 10% | Weak signal — discounted weight |
-| **growth_tech, conglomerate, standard** | 15% | Standard profitability bar |
+| Asset Class | +1 if ROE > | Special handling | Notes |
+|---|---|---|---|
+| **banking** | 12% | < 5% is a red flag | ROE 10–15% is solid for banks |
+| **capital_intensive** | 8% | Negative = flag | Regulated returns cap ROE |
+| **cyclical** | 8% | Only flag ROE < -5% (deep negative). Mild negative = normal trough. | Commodity cycles cause multi-year ROE swings |
+| **pharma** | 12% | Negative ROE noted as "common for early-stage biotech" | Pre-revenue biotech is expected |
+| **crypto_proxy** | 10% | ROE discounted as weak signal | Treasury strategies distort ROE |
+| **growth_tech, conglomerate, standard** | 15% | Negative = flag, declining = warn | Standard profitability bar |
+
+### Cyclical / Commodity (NEW)
+
+Energy and materials stocks (oil, gas, mining, metals, steel) are now classified as `cyclical`:
+- **ROE:** Lower bar (8%) and lenient on negative ROE during commodity troughs. Only flags deep negative (< -5%) as potentially structural.
+- **PEG:** Only rewards very cheap (< 1.0); doesn't penalize high PEG during trough earnings (earnings denominator is suppressed during down-cycles).
+- **D/E:** Moderate threshold (< 2.0) with warning at 3.5.
 
 ### SMA & RSI (Technical Trend)
 

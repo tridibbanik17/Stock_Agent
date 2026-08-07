@@ -253,6 +253,7 @@ def _human_asset_class(raw: object) -> str:
         "banking": "Banking / financial",
         "pharma": "Pharma / biotech",
         "conglomerate": "Conglomerate",
+        "cyclical": "Cyclical / commodity",
         "financial": "Financial",
         "utility": "Utility",
     }
