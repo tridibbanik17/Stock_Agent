@@ -110,23 +110,24 @@ def _grade_bucket(q: dict[str, Any]) -> str:
 
 def _quotes_by_urgency(quotes: list[dict[str, Any]]) -> list[tuple[str, str, list[dict[str, Any]]]]:
     """
-    Group watchlist into Avoid → Hold → Buy for scannable digests.
+    Group watchlist into Buy → Hold → Avoid for scannable digests.
+    Winners first (positive reinforcement), then neutral, then concerns.
     Returns [(bucket_key, section_title, quotes), ...] omitting empty buckets.
     """
     buckets: dict[str, list[dict[str, Any]]] = {
-        "avoid": [],
-        "hold": [],
         "buy": [],
+        "hold": [],
+        "avoid": [],
     }
     for q in quotes:
         buckets[_grade_bucket(q)].append(q)
     titles = {
-        "avoid": "Action / Avoid (0–2)",
-        "hold": "Watch / Hold (3)",
         "buy": "Buy opportunities (4–5)",
+        "hold": "Watch / Hold (3)",
+        "avoid": "Action / Avoid (0–2)",
     }
     out: list[tuple[str, str, list[dict[str, Any]]]] = []
-    for key in ("avoid", "hold", "buy"):
+    for key in ("buy", "hold", "avoid"):
         if buckets[key]:
             out.append((key, titles[key], buckets[key]))
     return out

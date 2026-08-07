@@ -174,6 +174,7 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
     score = 0
     notes: list[str] = []
     missing_data: list[str] = []
+    ticker_name = str(metrics.get("ticker") or "").upper().split(".")[0]
 
     try:
         window = int(sma_window) if sma_window is not None else 200
@@ -215,7 +216,9 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
             missing_data.append("RSI")
 
         risky_news = [
-            item for item in news_items if _is_risky_headline(item.get("title", ""))
+            item for item in news_items
+            if _is_risky_headline(item.get("title", ""))
+            and _headline_looks_relevant(item.get("title", ""), ticker_name)
         ]
         if risky_news:
             penalty = min(2, len(risky_news))
@@ -223,7 +226,6 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
             for item in risky_news[:3]:
                 notes.append(f"News risk: {item['title']}")
         elif news_items:
-            ticker_name = str(metrics.get("ticker") or "").upper().split(".")[0]
             relevant = [
                 item for item in news_items
                 if _headline_looks_relevant(item.get("title", ""), ticker_name)
@@ -456,7 +458,14 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         missing_data.append("RSI")
 
     # --- News: only penalize clearly risky headlines ---
-    risky_news = [item for item in news_items if _is_risky_headline(item.get("title", ""))]
+    # IMPORTANT: Risk headlines must also be relevant to the ticker.
+    # A generic article about "bankruptcy" that doesn't mention the stock
+    # should not penalize the score (e.g. Spotify getting an athlete bankruptcy article).
+    risky_news = [
+        item for item in news_items
+        if _is_risky_headline(item.get("title", ""))
+        and _headline_looks_relevant(item.get("title", ""), ticker_name)
+    ]
     if risky_news:
         # Cap at -2 so one probe does not erase an otherwise strong card.
         penalty = min(2, len(risky_news))
@@ -466,7 +475,6 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
     elif news_items:
         # Only show neutral headlines that look relevant to the ticker/company.
         # Skip generic lifestyle/human-interest articles that Yahoo sometimes bundles.
-        ticker_name = str(metrics.get("ticker") or "").upper().split(".")[0]
         relevant = [
             item for item in news_items
             if _headline_looks_relevant(item.get("title", ""), ticker_name)
