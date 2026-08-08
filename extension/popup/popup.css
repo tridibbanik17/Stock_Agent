@@ -218,6 +218,7 @@ body {
   display: grid;
   gap: 4px;
   padding: 8px 10px;
+  margin-bottom: 8px;
   border-radius: 8px;
   border: 1px solid #2a4a5c;
   background: linear-gradient(180deg, #1a2836 0%, #151e28 100%);
