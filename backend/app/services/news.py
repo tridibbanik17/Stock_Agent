@@ -258,6 +258,20 @@ def _fetch_yahoo_rss(ticker: str, max_items: int = 12) -> list[dict[str, str]]:
                 title = (node.findtext("title") or "").strip()
                 link = (node.findtext("link") or "").strip()
                 desc = (node.findtext("description") or "").strip()
+                pub_date = (node.findtext("pubDate") or "").strip()
+
+                # Freshness filter: drop headlines older than 7 days.
+                if pub_date:
+                    try:
+                        from email.utils import parsedate_to_datetime
+
+                        pub_dt = parsedate_to_datetime(pub_date)
+                        age_days = (time.time() - pub_dt.timestamp()) / 86400
+                        if age_days > 7:
+                            continue
+                    except Exception:
+                        pass  # Can't parse date — keep the headline
+
                 # Strip trivial HTML from description.
                 desc = re.sub(r"<[^>]+>", " ", desc)
                 desc = re.sub(r"\s+", " ", desc).strip()
