@@ -1401,27 +1401,27 @@ button.preset-chip.is-active {
 
 /* Light mode: ticker suggest dropdown */
 :root[data-theme="light"] .ticker-suggest {
-  background: #ffffff;
+  background: #ffffff !important;
   border-color: var(--line);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
 :root[data-theme="light"] .ticker-suggest-item {
-  color: var(--text);
-  background: #ffffff;
+  color: #0f172a !important;
+  background: #ffffff !important;
 }
 
 :root[data-theme="light"] .ticker-suggest-item:hover,
 :root[data-theme="light"] .ticker-suggest-item.is-active {
-  background: #f0f4f8;
+  background: #e8f0fe !important;
 }
 
 :root[data-theme="light"] .ticker-suggest-sym {
-  color: #0f172a;
+  color: #0f172a !important;
 }
 
 :root[data-theme="light"] .ticker-suggest-meta {
-  color: #475569;
+  color: #334155 !important;
 }
 
 /* Light mode: schedule summary + next email text */
