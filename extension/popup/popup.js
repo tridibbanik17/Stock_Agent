@@ -144,6 +144,17 @@ let toastFadeTimer = 0;
 // Boot
 // ---------------------------------------------------------------------------
 
+// Apply saved theme immediately (before DOM renders) to avoid flash.
+(async function applyThemeEarly() {
+  try {
+    const result = await chrome.storage.local.get("theme");
+    const theme = result.theme || "dark";
+    document.documentElement.setAttribute("data-theme", theme);
+  } catch {
+    // Default to dark if storage unavailable.
+  }
+})();
+
 init().catch((error) => {
   console.error("[Stock Agent] popup init failed", error);
   setStatus(error?.message || "Failed to load dashboard", "error", "global", "error");
@@ -162,6 +173,21 @@ async function init() {
 // ---------------------------------------------------------------------------
 
 function bindEvents() {
+  // Theme toggle
+  const themeBtn = document.getElementById("theme-toggle");
+  if (themeBtn) {
+    themeBtn.addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme") || "dark";
+      const next = current === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      // Rotation animation
+      themeBtn.classList.add("is-animating");
+      setTimeout(() => themeBtn.classList.remove("is-animating"), 400);
+      // Persist preference
+      chrome.storage.local.set({ theme: next });
+    });
+  }
+
   els.addTicker.addEventListener("click", () => {
     void onAddTicker();
   });

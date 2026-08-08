@@ -18,10 +18,103 @@
   --disclaimer-border: #3d9cf0;
   --font: "Segoe UI", "IBM Plex Sans", "Helvetica Neue", sans-serif;
   --mono: "Cascadia Mono", "Consolas", "SF Mono", monospace;
+
+  /* Transition for theme switching */
+  --theme-transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* Light mode overrides */
+:root[data-theme="light"] {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f0f3f7;
+  --line: #d8e0ea;
+  --text: #0f172a;
+  --muted: #5a6a7a;
+  --accent: #2563eb;
+  --accent-hover: #3b7cf5;
+  --ai-green: #16a34a;
+  --ai-green-deep: #dcfce7;
+  --ai-green-btn: #15803d;
+  --ai-green-check: #16a34a;
+  --ok: #16a34a;
+  --warn: #ca8a04;
+  --error: #dc2626;
+  --disclaimer-bg: #eff6ff;
+  --disclaimer-border: #3b82f6;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Theme transition on all themed elements */
+body,
+.shell,
+.panel,
+.brand,
+.badge,
+.disclaimer,
+.ticker-card,
+.schedule-builder,
+input,
+select,
+button,
+.status,
+.portfolio-summary,
+.legal-disclaimer {
+  transition: var(--theme-transition);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: var(--theme-transition), transform 0.3s ease;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.theme-toggle:active {
+  transform: rotate(180deg) scale(0.85);
+}
+
+.theme-toggle .theme-icon {
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+}
+
+/* Dark mode: show moon, hide sun */
+.theme-toggle .sun-icon {
+  display: none;
+}
+.theme-toggle .moon-icon {
+  display: block;
+}
+
+/* Light mode: show sun, hide moon */
+:root[data-theme="light"] .theme-toggle .sun-icon {
+  display: block;
+}
+:root[data-theme="light"] .theme-toggle .moon-icon {
+  display: none;
+}
+
+/* Animate icon on toggle */
+.theme-toggle.is-animating .theme-icon {
+  transform: rotate(360deg) scale(1.15);
 }
 
 body {
@@ -45,7 +138,7 @@ body {
 /* Brand */
 .brand {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   gap: 10px;
   align-items: center;
 }
@@ -1127,4 +1220,102 @@ button.preset-chip.is-active {
   font-size: 0.68rem;
   line-height: 1.45;
   color: #8b9aab;
+}
+
+/* Light mode: override hardcoded dark colors */
+:root[data-theme="light"] .legal-disclaimer {
+  background: #f8fafc;
+  color: #5a6a7a;
+}
+
+:root[data-theme="light"] body {
+  background: linear-gradient(180deg, #f0f4f8 0%, var(--bg) 40%);
+}
+
+:root[data-theme="light"] .brand-mark {
+  background: linear-gradient(145deg, #3b82f6 0%, #1d4ed8 55%, #1e3a5f 100%);
+}
+
+:root[data-theme="light"] input,
+:root[data-theme="light"] select {
+  background: #ffffff;
+  border-color: var(--line);
+  color: var(--text);
+}
+
+:root[data-theme="light"] button.ghost {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+:root[data-theme="light"] button.ghost:hover {
+  color: var(--text);
+  background: #f0f4f8;
+  border-color: var(--accent);
+}
+
+:root[data-theme="light"] .ticker-card {
+  background: #ffffff;
+  border-color: var(--line);
+}
+
+:root[data-theme="light"] .ticker-card:hover {
+  border-color: var(--accent);
+}
+
+:root[data-theme="light"] .schedule-builder {
+  background: #f8fafc;
+  border-color: var(--line);
+}
+
+:root[data-theme="light"] button.day-chip {
+  background: #ffffff;
+  color: var(--muted);
+}
+
+:root[data-theme="light"] button.day-chip.is-active {
+  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+:root[data-theme="light"] .portfolio-summary {
+  background: linear-gradient(180deg, #f8fafc 0%, #f0f4f8 100%);
+  border-color: var(--line);
+}
+
+:root[data-theme="light"] .quote-grade {
+  background: #f8fafc;
+}
+
+:root[data-theme="light"] .quote-grade.grade-strong_buy {
+  color: #16a34a;
+  border-color: color-mix(in srgb, #16a34a 40%, var(--line));
+}
+
+:root[data-theme="light"] .quote-grade.grade-hold {
+  color: #ca8a04;
+  border-color: color-mix(in srgb, #ca8a04 40%, var(--line));
+}
+
+:root[data-theme="light"] .quote-grade.grade-avoid {
+  color: #dc2626;
+  border-color: color-mix(in srgb, #dc2626 40%, var(--line));
+}
+
+:root[data-theme="light"] .position-pnl.is-gain {
+  color: #16a34a;
+}
+
+:root[data-theme="light"] .position-pnl.is-loss {
+  color: #dc2626;
+}
+
+:root[data-theme="light"] .portfolio-summary-row.is-gain {
+  color: #16a34a;
+}
+
+:root[data-theme="light"] .portfolio-summary-row.is-loss {
+  color: #dc2626;
 }
