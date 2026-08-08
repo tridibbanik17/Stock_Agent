@@ -608,11 +608,33 @@ export async function getCachedQuotesFetchedAt() {
  * @returns {Promise<void>}
  */
 export async function setCachedQuotes(quotes) {
+  // Only persist quotes with complete grade data (aboveSma200 resolved).
+  // Incomplete fetches (Render cold start, yfinance timeout) should NOT
+  // overwrite previously complete cached grades — prevents grade flicker
+  // between popup opens (HOLD on stale cache → STRONG BUY on fresh fetch).
+  const existing = await getCachedQuotes();
   const cleaned = {};
   for (const [ticker, quote] of Object.entries(quotes || {})) {
     if (!quote || typeof quote !== "object") continue;
     if (quote.error && quote.price == null) continue;
-    cleaned[String(ticker).toUpperCase()] = quote;
+    const key = String(ticker).toUpperCase();
+    // If the new quote is incomplete (no SMA data) but we have a complete
+    // cached version, keep the old one instead of downgrading.
+    const isComplete = quote.aboveSma200 === true || quote.aboveSma200 === false;
+    if (!isComplete && existing[key]) {
+      const prevComplete =
+        existing[key].aboveSma200 === true || existing[key].aboveSma200 === false;
+      if (prevComplete) {
+        // Keep old complete data, just update price if newer.
+        cleaned[key] = {
+          ...existing[key],
+          price: quote.price ?? existing[key].price,
+          asOf: quote.asOf || existing[key].asOf,
+        };
+        continue;
+      }
+    }
+    cleaned[key] = quote;
   }
   await chrome.storage.local.set({
     [STORAGE_KEYS.quoteSnapshot]: {
