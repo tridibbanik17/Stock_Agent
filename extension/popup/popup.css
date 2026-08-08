@@ -1408,11 +1408,20 @@ button.preset-chip.is-active {
 
 :root[data-theme="light"] .ticker-suggest-item {
   color: var(--text);
+  background: #ffffff;
 }
 
 :root[data-theme="light"] .ticker-suggest-item:hover,
 :root[data-theme="light"] .ticker-suggest-item.is-active {
   background: #f0f4f8;
+}
+
+:root[data-theme="light"] .ticker-suggest-sym {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] .ticker-suggest-meta {
+  color: #475569;
 }
 
 /* Light mode: schedule summary + next email text */
