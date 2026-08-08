@@ -144,14 +144,29 @@ _FINANCE_HEADLINE_KEYS = (
 
 def _headline_looks_relevant(title: str, ticker_base: str) -> bool:
     """
-    Filter out irrelevant fluff headlines (athlete bankruptcies, lifestyle articles).
-    A headline is relevant if it mentions the ticker/company or contains finance language.
+    Filter out irrelevant headlines. A headline is relevant ONLY if it
+    explicitly mentions the ticker symbol or company-related terms.
+    Finance keywords alone are NOT enough — prevents showing PYPL news under SHOP, etc.
+    """
+    text = f" {str(title or '').lower()} "
+    # Direct ticker mention (e.g. "SHOP" in the headline)
+    if ticker_base and ticker_base.lower() in text:
+        return True
+    return False
+
+
+def _headline_relevant_for_risk(title: str, ticker_base: str) -> bool:
+    """
+    For RISK headlines (score-penalizing), we're slightly more lenient:
+    the headline must mention the ticker OR contain finance language that
+    could plausibly be about the stock. This catches sector-wide probes
+    that mention the industry but not the specific ticker.
     """
     text = f" {str(title or '').lower()} "
     # Direct ticker mention
     if ticker_base and ticker_base.lower() in text:
         return True
-    # Contains finance-related language
+    # For risk headlines only: finance keywords make it plausibly relevant
     if any(key in text for key in _FINANCE_HEADLINE_KEYS):
         return True
     return False
@@ -218,7 +233,7 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         risky_news = [
             item for item in news_items
             if _is_risky_headline(item.get("title", ""))
-            and _headline_looks_relevant(item.get("title", ""), ticker_name)
+            and _headline_relevant_for_risk(item.get("title", ""), ticker_name)
         ]
         if risky_news:
             penalty = min(2, len(risky_news))
@@ -464,7 +479,7 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
     risky_news = [
         item for item in news_items
         if _is_risky_headline(item.get("title", ""))
-        and _headline_looks_relevant(item.get("title", ""), ticker_name)
+        and _headline_relevant_for_risk(item.get("title", ""), ticker_name)
     ]
     if risky_news:
         # Cap at -2 so one probe does not erase an otherwise strong card.
@@ -473,8 +488,8 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         for item in risky_news[:3]:
             notes.append(f"News risk: {item['title']}")
     elif news_items:
-        # Only show neutral headlines that look relevant to the ticker/company.
-        # Skip generic lifestyle/human-interest articles that Yahoo sometimes bundles.
+        # Only show neutral headlines that explicitly mention the ticker.
+        # Generic finance articles about other companies are filtered out.
         relevant = [
             item for item in news_items
             if _headline_looks_relevant(item.get("title", ""), ticker_name)
