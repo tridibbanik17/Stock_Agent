@@ -88,7 +88,7 @@ let quotesPending = /** @type {Set<string>} */ (new Set());
 /** When quotes were last successfully refreshed (local clock). */
 let quotesUpdatedAt = /** @type {Date|null} */ (null);
 /** Skip auto-refresh on popup reopen if cache is newer than this. */
-const QUOTE_FRESH_MS = 2 * 60 * 1000;
+const QUOTE_FRESH_MS = 5 * 60 * 1000;
 /** @type {'symbol'|'grade'|'pnl'} */
 let watchlistSort = "symbol";
 /**
@@ -322,6 +322,7 @@ function bindEvents() {
     const mode = btn.dataset.sort;
     if (mode !== "symbol" && mode !== "grade" && mode !== "pnl") return;
     watchlistSort = mode;
+    chrome.storage.local.set({ watchlistSort: mode });
     for (const chip of els.sortRow.querySelectorAll(".sort-chip")) {
       if (!(chip instanceof HTMLButtonElement)) continue;
       const active = chip === btn;
@@ -492,6 +493,21 @@ async function hydrateFromStorage() {
   els.email.value = state.delivery.email || "";
   applyScheduleToDom(normalizeSchedule(state.delivery.schedule));
   els.geminiKey.value = state.geminiApiKey || (await getGeminiKey());
+
+  // Restore sort preference.
+  try {
+    const sortResult = await chrome.storage.local.get("watchlistSort");
+    const saved = sortResult.watchlistSort;
+    if (saved === "symbol" || saved === "grade" || saved === "pnl") {
+      watchlistSort = saved;
+      for (const chip of els.sortRow.querySelectorAll(".sort-chip")) {
+        if (!(chip instanceof HTMLButtonElement)) continue;
+        const active = chip.dataset.sort === saved;
+        chip.classList.toggle("is-active", active);
+        chip.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+    }
+  } catch { /* ignore */ }
 
   // Show last stable grades immediately so a cold Yahoo fetch doesn't flash low scores.
   quoteCache = await getCachedQuotes();
