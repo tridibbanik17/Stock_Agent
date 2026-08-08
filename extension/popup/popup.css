@@ -1406,9 +1406,50 @@ button.preset-chip.is-active {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
+:root[data-theme="light"] .ticker-suggest-item {
+  color: var(--text);
+}
+
 :root[data-theme="light"] .ticker-suggest-item:hover,
 :root[data-theme="light"] .ticker-suggest-item.is-active {
   background: #f0f4f8;
+}
+
+/* Light mode: schedule summary + next email text */
+:root[data-theme="light"] .schedule-summary {
+  color: #1e293b;
+}
+
+:root[data-theme="light"] .schedule-next {
+  color: #475569;
+}
+
+/* Light mode: status messages (ok/warn/error) — boost contrast */
+:root[data-theme="light"] .status[data-kind="ok"] {
+  color: #15803d;
+}
+
+:root[data-theme="light"] .status[data-kind="warn"] {
+  color: #a16207;
+}
+
+:root[data-theme="light"] .status[data-kind="error"] {
+  color: #b91c1c;
+}
+
+/* Light mode: AI blurb (Gemini explanations) */
+:root[data-theme="light"] .ai-blurb {
+  color: #334155;
+  border-left-color: color-mix(in srgb, var(--accent) 60%, #cbd5e1);
+}
+
+:root[data-theme="light"] .ai-blurb.is-loading {
+  color: #2563eb;
+}
+
+:root[data-theme="light"] .ai-blurb.is-error {
+  color: #b91c1c;
+  border-left-color: color-mix(in srgb, #dc2626 50%, #cbd5e1);
 }
 
 /* Light mode: remove button */
