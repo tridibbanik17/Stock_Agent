@@ -105,8 +105,9 @@ def _metric_glossary() -> list[str]:
         "  RSI (Relative Strength Index) — momentum oscillator (0-100).",
         "    +1 if below 35 (oversold). -1 if above 70 (overbought).",
         "",
-        "  News risk: -1 for 1 risk headline, -2 for 2+ (lawsuits, fraud, etc.).",
-        "    Positive news is not scored — it's already reflected in price momentum.",
+        "  News risk: negative headlines (lawsuits, fraud, downgrades)",
+        "    deduct -1 for one, -2 max for multiple.",
+        "    Positive news is not scored — already reflected in price momentum.",
         "",
         "Final score: 4-5 = STRONG BUY, 3 = HOLD, 0-2 = AVOID.",
         "Missing data = no point awarded (grade may be lower than with full data).",
@@ -539,7 +540,7 @@ def format_report_html(
           <tr><td style="padding:4px 8px;font-weight:700;">ROE</td><td style="padding:4px 8px;">Return on Equity (profit efficiency). +1 if above 15%. Declining trend triggers a warning.</td></tr>
           <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">200-SMA</td><td style="padding:4px 8px;">200-day simple moving average. +1 if price is above it (uptrend).</td></tr>
           <tr><td style="padding:4px 8px;font-weight:700;">RSI</td><td style="padding:4px 8px;">Relative Strength Index (0–100). +1 if below 35 (oversold). &minus;1 if above 70 (overbought).</td></tr>
-          <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">News</td><td style="padding:4px 8px;">&minus;1 for 1 risk headline, &minus;2 for 2+ (lawsuits, fraud, downgrades). Positive news is not scored — it's already reflected in price momentum.</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">News</td><td style="padding:4px 8px;">Negative headlines (lawsuits, fraud, downgrades): &minus;1 for one, &minus;2 max for multiple. Positive news is not scored — already reflected in price momentum.</td></tr>
         </table>
         <p style="margin:8px 0 0;font-size:12px;color:#64748b;line-height:1.55;">
           <strong>4–5 = STRONG BUY, 3 = HOLD, 0–2 = AVOID.</strong>
