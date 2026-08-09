@@ -123,25 +123,29 @@ def _metric_glossary() -> list[str]:
 
 
 def _grade_bucket(q: dict[str, Any]) -> str:
-    """avoid | hold | buy — for urgency-sorted email sections."""
+    """avoid | hold | buy | insufficient — for urgency-sorted email sections."""
     g = quote_grade(q)
     if g == "STRONG_BUY":
         return "buy"
     if g == "HOLD":
         return "hold"
+    if g == "INSUFFICIENT_DATA":
+        return "insufficient"
     return "avoid"
 
 
 def _quotes_by_urgency(quotes: list[dict[str, Any]]) -> list[tuple[str, str, list[dict[str, Any]]]]:
     """
-    Group watchlist into Buy → Hold → Avoid for scannable digests.
-    Winners first (positive reinforcement), then neutral, then concerns.
+    Group watchlist into Buy → Hold → Avoid → Insufficient for scannable digests.
+    Winners first (positive reinforcement), then neutral, then concerns,
+    then unscored tickers at the very bottom.
     Returns [(bucket_key, section_title, quotes), ...] omitting empty buckets.
     """
     buckets: dict[str, list[dict[str, Any]]] = {
         "buy": [],
         "hold": [],
         "avoid": [],
+        "insufficient": [],
     }
     for q in quotes:
         buckets[_grade_bucket(q)].append(q)
@@ -149,9 +153,10 @@ def _quotes_by_urgency(quotes: list[dict[str, Any]]) -> list[tuple[str, str, lis
         "buy": "Buy opportunities (4–5)",
         "hold": "Watch / Hold (3)",
         "avoid": "Action / Avoid (0–2)",
+        "insufficient": "Unscored / Insufficient data",
     }
     out: list[tuple[str, str, list[dict[str, Any]]]] = []
-    for key in ("buy", "hold", "avoid"):
+    for key in ("buy", "hold", "avoid", "insufficient"):
         if buckets[key]:
             out.append((key, titles[key], buckets[key]))
     return out
