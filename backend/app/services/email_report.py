@@ -82,15 +82,35 @@ LEGAL_DISCLAIMER = (
 
 
 def _metric_glossary() -> list[str]:
-    """Short plain-language footer — keep email scannable."""
+    """Plain-language footer with threshold details."""
     return [
-        "METRIC GUIDE",
+        "HOW GRADES WORK (no AI — deterministic rules only)",
         "-" * 46,
-        "Grade 4-5 = STRONG BUY, 3 = HOLD, 0-2 = AVOID.",
-        "D/E = debt vs equity. PEG = valuation vs growth.",
-        "RSI = momentum (0-100). 200-SMA = long-term trend.",
-        "Grades use rules plus headline risk flags only.",
-        "Privacy: tickers only - never share counts or buy prices.",
+        "Each stock starts at 0 and earns up to 5 points:",
+        "",
+        "  D/E (Debt-to-Equity) — total debt / shareholder equity.",
+        "    +1 if below threshold (1.5 standard, 1.0 growth/tech, 3.0 capital-intensive).",
+        "",
+        "  PEG (Price/Earnings-to-Growth) — PE ratio / earnings growth rate.",
+        "    +1 if below threshold (1.0 standard, 1.5 growth/tech).",
+        "    Higher PEG = you're paying more per unit of growth.",
+        "",
+        "  ROE (Return on Equity) — net income / shareholder equity.",
+        "    +1 if above 15% (or 8% for utilities, 12% for banks).",
+        "    Declining ROE triggers a warning note.",
+        "",
+        "  200-SMA (200-day Simple Moving Average) — long-term trend.",
+        "    +1 if price is above the 200-SMA (uptrend).",
+        "",
+        "  RSI (Relative Strength Index) — momentum oscillator (0-100).",
+        "    +1 if below 35 (oversold). -1 if above 70 (overbought).",
+        "",
+        "  News risk: -1 or -2 if recent headlines flag lawsuits, fraud, etc.",
+        "",
+        "Final score: 4-5 = STRONG BUY, 3 = HOLD, 0-2 = AVOID.",
+        "Missing data: no penalty, but no point awarded either.",
+        "",
+        "Full methodology: https://github.com/tridibbanik17/Stock_Agent/blob/main/docs/GRADING_ENGINE.md",
         "",
         "DISCLAIMER",
         "-" * 46,
@@ -391,8 +411,10 @@ def format_report_html(
         health = _watchlist_health_line(quotes)
         intro = (
             "<p style='margin:0 0 12px;color:#334155;font-size:14px;line-height:1.5;'>"
-            "Rule-based grades for your watchlist. "
-            "Metrics and notes explain each score — not personalized advice."
+            "Grades are calculated from financial metrics (debt, growth, momentum, trend) "
+            "using deterministic rules — no AI, no opinions. "
+            "<a href='https://github.com/tridibbanik17/Stock_Agent/blob/main/docs/GRADING_ENGINE.md' "
+            "style='color:#2563eb;'>See how scores are calculated.</a>"
             "</p>"
         )
         title = "Watchlist report"
@@ -491,11 +513,22 @@ def format_report_html(
     glossary = ""
     if not no_change_digest:
         glossary = f"""
-        <h2 style="font-size:14px;margin:28px 0 8px;color:#0c1117;">Metric guide</h2>
-        <p style="margin:0;font-size:12px;color:#64748b;line-height:1.55;">
-          Grade 4–5 = STRONG BUY, 3 = HOLD, 0–2 = AVOID.
-          D/E = debt vs equity. PEG = valuation vs growth. RSI = momentum (0–100).
-          200-SMA = long-term trend. Grades use rules plus headline risk flags only.
+        <h2 style="font-size:14px;margin:28px 0 8px;color:#0c1117;">How grades work (no AI)</h2>
+        <p style="margin:0 0 8px;font-size:12px;color:#64748b;line-height:1.55;">
+          Each stock starts at 0 and earns up to 5 points from these metrics:
+        </p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;color:#475569;line-height:1.5;">
+          <tr><td style="padding:4px 8px;font-weight:700;">D/E</td><td style="padding:4px 8px;">Debt-to-Equity (total debt &divide; equity). +1 if below sector threshold.</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">PEG</td><td style="padding:4px 8px;">Price/Earnings-to-Growth. +1 if below 1.0 (or 1.5 for growth/tech). Higher = overpaying for growth.</td></tr>
+          <tr><td style="padding:4px 8px;font-weight:700;">ROE</td><td style="padding:4px 8px;">Return on Equity (profit efficiency). +1 if above 15%. Declining trend triggers a warning.</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">200-SMA</td><td style="padding:4px 8px;">200-day moving average. +1 if price is above it (uptrend).</td></tr>
+          <tr><td style="padding:4px 8px;font-weight:700;">RSI</td><td style="padding:4px 8px;">Relative Strength Index (0–100). +1 if below 35 (oversold). &minus;1 if above 70 (overbought).</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">News</td><td style="padding:4px 8px;">&minus;1 or &minus;2 if headlines flag lawsuits, fraud, downgrades, etc.</td></tr>
+        </table>
+        <p style="margin:8px 0 0;font-size:12px;color:#64748b;line-height:1.55;">
+          <strong>4–5 = STRONG BUY, 3 = HOLD, 0–2 = AVOID.</strong>
+          Missing data: no penalty, but no point awarded.
+          <a href="https://github.com/tridibbanik17/Stock_Agent/blob/main/docs/GRADING_ENGINE.md" style="color:#2563eb;">Full methodology</a>
         </p>
         """
 
