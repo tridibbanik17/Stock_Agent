@@ -345,11 +345,22 @@ def _watchlist_health_line(quotes: list[dict[str, Any]]) -> str:
     return " · ".join(parts)
 
 
-def build_report_subject(report_day, quotes: list[dict[str, Any]]) -> str:
-    """Inbox-friendly subject with local date + grade mix."""
+def build_report_subject(report_day, quotes: list[dict[str, Any]], preferred_time=None) -> str:
+    """Inbox-friendly subject with local date + time + grade mix.
+    
+    Including the time prevents Gmail/Outlook from threading multiple
+    same-day reports into a single conversation row.
+    """
     month = report_day.strftime("%b")
     day = str(int(report_day.day))
     summary = _grade_summary_line(quotes)
+    if preferred_time is not None:
+        try:
+            time_str = preferred_time.strftime("%-I:%M %p")
+        except ValueError:
+            # Windows doesn't support %-I, use %#I instead
+            time_str = preferred_time.strftime("%#I:%M %p")
+        return f"Stock Agent · {month} {day}, {time_str} · {summary}"
     return f"Stock Agent · {month} {day} · {summary}"
 
 

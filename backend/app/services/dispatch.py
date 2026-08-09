@@ -448,7 +448,7 @@ def dispatch_user(
         report_day = preferred_local.date()
     else:
         report_day = _local_now(user_to_schedule(row), sent_at).date()
-    subject = build_report_subject(report_day, quotes)
+    subject = build_report_subject(report_day, quotes, preferred_time=preferred_local)
     text_body = format_report_text(email, quotes, unsubscribe_url=unsubscribe_url)
     html_body = format_report_html(email, quotes, unsubscribe_url=unsubscribe_url)
 
