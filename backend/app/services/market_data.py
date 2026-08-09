@@ -770,10 +770,15 @@ def analyze_ticker(ticker: str) -> dict[str, Any]:
             if peg is None and peer.get("pegRatio") is not None:
                 peg = peer["pegRatio"]
 
+        # Classify asset class from original info FIRST (CDR detection needs
+        # empty sector/industry to trigger the early-return logic).
+        # Only enrich with peer sector/industry if the CDR path did not fire.
+        asset_class = classify_asset_from_info(info, symbol)
         sector = info.get("sector") or peer.get("sector")
         industry = info.get("industry") or peer.get("industry")
-        enriched_info = {**info, "sector": sector, "industry": industry}
-        asset_class = classify_asset_from_info(enriched_info, symbol)
+        if asset_class == "standard" and (peer.get("sector") or peer.get("industry")):
+            enriched_info = {**info, "sector": sector, "industry": industry}
+            asset_class = classify_asset_from_info(enriched_info, symbol)
 
         try:
             balance_sheet = stock.balance_sheet
