@@ -520,10 +520,12 @@ def format_report_html(
     unsub = ""
     if unsubscribe_url:
         unsub = f"""
-        <p style="margin:24px 0 0;font-size:12px;color:#64748b;line-height:1.5;">
+        <p style="margin:24px 0 4px;font-size:12px;color:#64748b;line-height:1.5;">
           <a href="{_esc(unsubscribe_url)}" style="color:#2563eb;">Unsubscribe</a>
           from scheduled emails. You can re-enable anytime in the extension.
-          · Privacy: we only store tickers — never share counts or buy prices.
+        </p>
+        <p style="margin:0;font-size:11px;color:#94a3b8;line-height:1.5;">
+          Privacy: we only store tickers — never share counts or buy prices.
         </p>
         """
 
