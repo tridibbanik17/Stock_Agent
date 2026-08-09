@@ -296,7 +296,7 @@ def _human_bool(raw: object) -> str:
 
 def _grade_summary_line(quotes: list[dict[str, Any]]) -> str:
     """Short scannable counts for the email intro / subject."""
-    strong = hold = avoid = 0
+    strong = hold = avoid = insufficient = 0
     for q in quotes:
         g = quote_grade(q)
         if g == "STRONG_BUY":
@@ -305,6 +305,8 @@ def _grade_summary_line(quotes: list[dict[str, Any]]) -> str:
             hold += 1
         elif g == "AVOID":
             avoid += 1
+        elif g == "INSUFFICIENT_DATA":
+            insufficient += 1
     parts: list[str] = []
     if strong:
         parts.append(f"{strong} strong buy")
@@ -312,6 +314,8 @@ def _grade_summary_line(quotes: list[dict[str, Any]]) -> str:
         parts.append(f"{hold} hold")
     if avoid:
         parts.append(f"{avoid} avoid")
+    if insufficient:
+        parts.append(f"{insufficient} no data")
     return " · ".join(parts) if parts else f"{len(quotes)} tickers"
 
 
