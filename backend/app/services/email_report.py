@@ -701,12 +701,7 @@ def _send_via_ses(
             "Content": content,
         }
         if headers:
-            send_kwargs["ListManagementOptions"] = {}  # Required for headers in SESv2
-            # SESv2 doesn't support List-Unsubscribe via ListManagementOptions directly.
-            # Use email headers instead via the raw message approach, or rely on
-            # SES's built-in subscription management. For simplicity, we'll add
-            # the headers via the EmailTags/Headers parameter if available.
-            # Actually, SESv2 SendEmail supports Headers in the Simple format:
+            # SESv2 SendEmail supports Headers in the Simple format directly.
             send_kwargs["Content"]["Simple"]["Headers"] = headers
 
         response = client.send_email(**send_kwargs)
