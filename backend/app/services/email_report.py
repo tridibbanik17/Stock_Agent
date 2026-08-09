@@ -99,22 +99,25 @@ def _metric_glossary() -> list[str]:
         "    +1 if above 15% (or 8% for utilities, 12% for banks).",
         "    Declining ROE triggers a warning note.",
         "",
-        "  200-SMA (200-day Simple Moving Average) — long-term trend.",
-        "    +1 if price is above the 200-SMA (uptrend).",
+        "  200-SMA (200-day Simple Moving Average) — long-term price trend.",
+        "    +1 if price is above the 200-day SMA (uptrend).",
         "",
         "  RSI (Relative Strength Index) — momentum oscillator (0-100).",
         "    +1 if below 35 (oversold). -1 if above 70 (overbought).",
         "",
-        "  News risk: -1 or -2 if recent headlines flag lawsuits, fraud, etc.",
+        "  News risk: -1 for 1 risk headline, -2 for 2+ (lawsuits, fraud, etc.).",
+        "    Positive news is not scored — it's already reflected in price momentum.",
         "",
         "Final score: 4-5 = STRONG BUY, 3 = HOLD, 0-2 = AVOID.",
-        "Missing data: no penalty, but no point awarded either.",
+        "Missing data = no point awarded (grade may be lower than with full data).",
         "",
         "Full methodology: https://github.com/tridibbanik17/Stock_Agent/blob/main/docs/GRADING_ENGINE.md",
         "",
         "DISCLAIMER",
         "-" * 46,
         LEGAL_DISCLAIMER,
+        "",
+        "Privacy: tickers only — never your share counts or buy prices.",
     ]
 
 
@@ -518,7 +521,8 @@ def format_report_html(
         unsub = f"""
         <p style="margin:24px 0 0;font-size:12px;color:#64748b;line-height:1.5;">
           <a href="{_esc(unsubscribe_url)}" style="color:#2563eb;">Unsubscribe</a>
-          from scheduled emails. You can re-enable anytime in the Stock Agent Chrome extension.
+          from scheduled emails. You can re-enable anytime in the extension.
+          · Privacy: we only store tickers — never share counts or buy prices.
         </p>
         """
 
@@ -533,13 +537,13 @@ def format_report_html(
           <tr><td style="padding:4px 8px;font-weight:700;">D/E</td><td style="padding:4px 8px;">Debt-to-Equity (total debt &divide; equity). +1 if below sector threshold.</td></tr>
           <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">PEG</td><td style="padding:4px 8px;">Price/Earnings-to-Growth. +1 if below 1.0 (or 1.5 for growth/tech). Higher = overpaying for growth.</td></tr>
           <tr><td style="padding:4px 8px;font-weight:700;">ROE</td><td style="padding:4px 8px;">Return on Equity (profit efficiency). +1 if above 15%. Declining trend triggers a warning.</td></tr>
-          <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">200-SMA</td><td style="padding:4px 8px;">200-day moving average. +1 if price is above it (uptrend).</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">200-SMA</td><td style="padding:4px 8px;">200-day simple moving average. +1 if price is above it (uptrend).</td></tr>
           <tr><td style="padding:4px 8px;font-weight:700;">RSI</td><td style="padding:4px 8px;">Relative Strength Index (0–100). +1 if below 35 (oversold). &minus;1 if above 70 (overbought).</td></tr>
-          <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">News</td><td style="padding:4px 8px;">&minus;1 or &minus;2 if headlines flag lawsuits, fraud, downgrades, etc.</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">News</td><td style="padding:4px 8px;">&minus;1 for 1 risk headline, &minus;2 for 2+ (lawsuits, fraud, downgrades). Positive news is not scored — it's already reflected in price momentum.</td></tr>
         </table>
         <p style="margin:8px 0 0;font-size:12px;color:#64748b;line-height:1.55;">
           <strong>4–5 = STRONG BUY, 3 = HOLD, 0–2 = AVOID.</strong>
-          Missing data: no penalty, but no point awarded.
+          Missing data = no point awarded (grade may be lower than with full data).
           <a href="https://github.com/tridibbanik17/Stock_Agent/blob/main/docs/GRADING_ENGINE.md" style="color:#2563eb;">Full methodology</a>
         </p>
         """
@@ -548,7 +552,6 @@ def format_report_html(
     <p style="margin:16px 0 0;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;color:#64748b;line-height:1.55;">
       {_esc(LEGAL_DISCLAIMER)}
     </p>
-    <p style="margin:12px 0 0;font-size:11px;color:#94a3b8;">Privacy: tickers only — never your share counts or buy prices.</p>
     """
 
     return f"""<!DOCTYPE html>
