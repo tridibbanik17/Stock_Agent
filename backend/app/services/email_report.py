@@ -412,7 +412,8 @@ def format_report_html(
         intro = (
             "<p style='margin:0 0 12px;color:#334155;font-size:14px;line-height:1.5;'>"
             "Grades are calculated from financial metrics (debt, growth, momentum, trend) "
-            "using deterministic rules — no AI, no opinions. "
+            "and recent news-risk flags using deterministic rules — no AI. "
+            "News headlines are sourced from Yahoo Finance and may not reflect the full picture. "
             "<a href='https://github.com/tridibbanik17/Stock_Agent/blob/main/docs/GRADING_ENGINE.md' "
             "style='color:#2563eb;'>See how scores are calculated.</a>"
             "</p>"
