@@ -1,16 +1,12 @@
-# Hybrid B wake-up: ping the hosted API every 5 minutes.
-# The API runs early/overdue matching + Resend (see POST /api/internal/dispatch-due).
+# DEPRECATED: Dispatch is now handled by AWS EventBridge + Lambda (every 5 min, punctual).
+# This workflow is disabled. Delete GitHub Actions secrets PUBLIC_API_BASE_URL and DISPATCH_SECRET.
 #
-# Required repo secrets (Settings → Secrets and variables → Actions):
-#   PUBLIC_API_BASE_URL   e.g. https://stock-agent-api-m06f.onrender.com  (no trailing slash)
-#   DISPATCH_SECRET       same value as Render env DISPATCH_SECRET
-#
-# Supabase / Resend secrets are no longer needed here — they live on Render.
-name: Scheduled report dispatch
+# To re-enable, uncomment the schedule trigger below.
+name: Scheduled report dispatch (disabled)
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # schedule:
+  #   - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
