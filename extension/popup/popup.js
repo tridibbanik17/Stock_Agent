@@ -25,6 +25,8 @@ import {
   getLocalState,
   getCachedQuotes,
   getCachedQuotesFetchedAt,
+  getCachedExplains,
+  setCachedExplains,
   joinTimeParts,
   normalizeSchedule,
   setDelivery,
@@ -520,6 +522,10 @@ async function hydrateFromStorage() {
       quotesUpdatedAt = new Date(Math.max(...asOfTimes));
     }
   }
+
+  // Restore AI explanations from previous session.
+  aiExplainCache = await getCachedExplains();
+
   updateQuotesUpdatedLabel();
   renderWatchlist(state.watchlist, state.holdings, quoteCache);
 }
@@ -1317,6 +1323,7 @@ async function refreshQuotesInternal(opts = {}) {
   if (!isPartial) {
     quotesLoading = true;
     aiExplainCache = {};
+    void setCachedExplains({});
     aiExplainGeneration += 1;
     updateExplainButtonLabel(0);
     els.refreshQuotes.disabled = true;
@@ -1571,7 +1578,7 @@ async function onExplainGrades() {
         }
       }
 
-      // Update progress status after each chunk.
+      // Update progress status after each chunk and persist to storage.
       const okCount = Object.values(aiExplainCache).filter(
         (e) => e?.status === "ok"
       ).length;
@@ -1583,6 +1590,7 @@ async function onExplainGrades() {
         "ai",
         "persistent"
       );
+      await setCachedExplains(aiExplainCache);
     }
 
     if (generation !== aiExplainGeneration) return;

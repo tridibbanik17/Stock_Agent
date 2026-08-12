@@ -75,6 +75,7 @@ const STORAGE_KEYS = Object.freeze({
   delivery: "delivery",
   userId: "userId",
   quoteSnapshot: "quoteSnapshot",
+  aiExplainCache: "aiExplainCache",
 });
 
 /** @returns {string} */
@@ -642,6 +643,42 @@ export async function setCachedQuotes(quotes) {
       quotes: cleaned,
     },
   });
+}
+
+/**
+ * Cached AI explanations (persisted so they survive popup close/reopen).
+ * @returns {Promise<Record<string, { status: string, text: string }>>}
+ */
+export async function getCachedExplains() {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.aiExplainCache);
+  const raw = result[STORAGE_KEYS.aiExplainCache];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  /** @type {Record<string, { status: string, text: string }>} */
+  const out = {};
+  for (const [ticker, entry] of Object.entries(raw)) {
+    if (entry && typeof entry === "object" && entry.status && entry.text) {
+      out[String(ticker).toUpperCase()] = {
+        status: String(entry.status),
+        text: String(entry.text),
+      };
+    }
+  }
+  return out;
+}
+
+/**
+ * Persist AI explanations to survive popup close.
+ * @param {Record<string, { status: string, text: string }>} cache
+ * @returns {Promise<void>}
+ */
+export async function setCachedExplains(cache) {
+  const cleaned = {};
+  for (const [ticker, entry] of Object.entries(cache || {})) {
+    if (entry && entry.status === "ok" && entry.text) {
+      cleaned[String(ticker).toUpperCase()] = { status: "ok", text: entry.text };
+    }
+  }
+  await chrome.storage.local.set({ [STORAGE_KEYS.aiExplainCache]: cleaned });
 }
 
 /**
