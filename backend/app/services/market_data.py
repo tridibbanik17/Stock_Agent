@@ -523,6 +523,63 @@ def _fast_last_price(stock: yf.Ticker) -> float | None:
         return None
 
 
+def fetch_quick_price(ticker: str) -> dict[str, Any]:
+    """
+    Fast price-only fetch (~1-2s). No fundamentals, no grading.
+    Returns {ticker, price, currency, error} for immediate UI feedback.
+    """
+    symbol = ticker.strip().upper()
+
+    # Normalize US share-class tickers: BRK.B → BRK-B
+    _EXCHANGE_SUFFIXES = (".TO", ".V", ".CN", ".NS", ".BO", ".L", ".T", ".AX")
+    if "." in symbol and not any(symbol.endswith(s) for s in _EXCHANGE_SUFFIXES):
+        parts = symbol.rsplit(".", 1)
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            symbol = f"{parts[0]}-{parts[1]}"
+
+    if _is_indian_ticker(symbol):
+        _warm_session()
+
+    try:
+        stock = yf.Ticker(symbol, session=_get_session())
+        price = _fast_last_price(stock)
+
+        if price is None:
+            # Try history as fallback
+            try:
+                hist = stock.history(period="5d")
+                if hist is not None and not hist.empty and "Close" in hist.columns:
+                    closes = hist["Close"].dropna()
+                    if not closes.empty:
+                        price = round(float(closes.iloc[-1]), 2)
+            except Exception:
+                pass
+
+        # Google Finance fallback for Indian tickers
+        if price is None and _is_indian_ticker(symbol):
+            price = _google_finance_price(symbol)
+
+        if price is not None:
+            price = round(price, 2)
+
+        currency = resolve_currency(symbol)
+
+        return {
+            "ticker": symbol,
+            "price": price,
+            "currency": currency,
+            "error": None if price is not None else "price_unavailable",
+        }
+    except Exception as exc:
+        logger.warning("Quick price fetch failed for %s: %s", symbol, str(exc)[:100])
+        return {
+            "ticker": symbol,
+            "price": None,
+            "currency": resolve_currency(symbol),
+            "error": "fetch_failed",
+        }
+
+
 def _load_history(stock: yf.Ticker) -> pd.DataFrame:
     """
     Try longer then shorter windows; empty frame on total failure.

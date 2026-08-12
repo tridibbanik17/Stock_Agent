@@ -1,11 +1,11 @@
-﻿﻿﻿﻿﻿/**
+﻿﻿﻿﻿/**
  * Popup dashboard controller
  * --------------------------
  * Local-only: holdings, Gemini key (via storage.js → chrome.storage.local)
  * Cloud-eligible: email, watchlist, schedule → POST /api/subscribe
  */
 
-import { fetchWatchlistSnapshot, subscribeDelivery } from "../lib/api.js";
+import { fetchQuickPrice, fetchWatchlistSnapshot, subscribeDelivery } from "../lib/api.js";
 import { explainQuotesOnce, generateGeminiText } from "../lib/gemini.js";
 import { suggestTickers } from "../lib/tickers.js";
 import {
@@ -541,7 +541,7 @@ async function maybeAutoRefreshQuotes() {
 
   const missing = watchlist.filter((ticker) => {
     const q = quoteCache[ticker];
-    return !q || (q.price == null && !q.error);
+    return !q || (q.price == null && !q.error) || !q.grade;
   });
   if (missing.length) {
     void refreshQuotes({ quiet: true, tickers: missing });
@@ -1766,66 +1766,31 @@ async function onAddTicker() {
     return;
   }
 
-  watchlist.push(ticker);
-  const result = await setWatchlist(watchlist);
-  els.tickerInput.value = "";
-  els.tickerInput.focus();
-  renderWatchlist(result.watchlist, result.holdings, quoteCache);
-  setStatus(`Checking ${ticker}…`, "info", "watchlistAdd", "persistent");
+  // Step 1: Fast price check (~1-2s) for immediate validation.
+  setStatus(`Checking ${ticker}\u2026`, "info", "watchlistAdd", "persistent");
 
-  // Confirm Yahoo has a price before keeping the symbol.
-  const fetchResult = await refreshQuotes({
-    quiet: true,
-    tickers: [ticker],
-    skipStatus: true,
-  });
-  const quote = quoteCache[ticker];
-  const hasPrice = quote && typeof quote.price === "number" && Number.isFinite(quote.price);
-
-  if (!hasPrice) {
-    // Distinguish a network/API failure (Render cold start, timeout, 5xx) from
-    // a genuinely unknown ticker. Network failures keep the ticker; bad tickers are removed.
-    const errorStr = String(quote?.error || "").toLowerCase();
-    // Also treat price_unavailable on Indian tickers as non-fatal:
-    // Render's US servers are often geo-blocked by Yahoo Finance for .NS/.BO data.
+  let quickQuote = null;
+  try {
+    const priceData = await fetchQuickPrice([ticker]);
+    quickQuote = (priceData?.quotes || []).find((q) => q?.ticker === ticker) || null;
+  } catch (err) {
     const isIndianTicker = ticker.endsWith(".NS") || ticker.endsWith(".BO");
-    const isNetworkError =
-      errorStr.includes("fetch_failed") ||
-      errorStr.includes("cannot reach") ||
-      errorStr.includes("network") ||
-      errorStr.includes("timeout") ||
-      errorStr.includes("503") ||
-      errorStr.includes("502") ||
-      errorStr.includes("500") ||
-      errorStr.includes("failed to fetch") ||
-      errorStr.includes("awake") ||
-      // price_unavailable / empty_snapshot: keep Indian tickers (Render geo-block from Yahoo)
-      // but still reject genuinely bad US/CA tickers that return no price.
-      (isIndianTicker && (errorStr.includes("price_unavailable") || errorStr.includes("empty_snapshot") || errorStr === "")) ||
-      (!quote && (fetchResult?.failed || []).includes(ticker));
-
-    if (isNetworkError) {
+    if (isIndianTicker || String(err?.message || "").toLowerCase().includes("cannot reach")) {
+      watchlist.push(ticker);
+      const result = await setWatchlist(watchlist);
+      els.tickerInput.value = "";
+      els.tickerInput.focus();
+      renderWatchlist(result.watchlist, result.holdings, quoteCache);
       setStatus(
-        `${ticker} added. Live price unavailable right now (API may be waking up) — grades will load on next refresh.`,
+        `${ticker} added. Live price unavailable right now \u2014 grades will load on next refresh.`,
         "warn",
         "watchlistAdd",
         "persistent"
       );
       return;
     }
-
-    const pruned = (await getLocalState()).watchlist.filter((t) => t !== ticker);
-    const after = await setWatchlist(pruned);
-    delete quoteCache[ticker];
-    delete aiExplainCache[ticker];
-    await setCachedQuotes(
-      /** @type {Record<string, Record<string, unknown>>} */ (quoteCache)
-    );
-    renderWatchlist(after.watchlist, after.holdings, quoteCache);
-    els.tickerInput.value = ticker;
-    els.tickerInput.focus();
     setStatus(
-      `${ticker} isn’t a valid tradeable symbol (no live price). Not added — check the spelling.`,
+      `${ticker} isn\u2019t a valid tradeable symbol (no live price). Not added \u2014 check the spelling.`,
       "warn",
       "watchlistAdd",
       "error"
@@ -1833,7 +1798,68 @@ async function onAddTicker() {
     return;
   }
 
-  setStatus(`Added ${ticker}.`, "ok", "watchlistAdd", "transient");
+  const hasPrice = quickQuote && typeof quickQuote.price === "number" && Number.isFinite(quickQuote.price);
+
+  if (!hasPrice) {
+    const errorStr = String(quickQuote?.error || "").toLowerCase();
+    const isIndianTicker = ticker.endsWith(".NS") || ticker.endsWith(".BO");
+    const isNetworkError =
+      errorStr.includes("fetch_failed") ||
+      errorStr.includes("cannot reach") ||
+      errorStr.includes("network") ||
+      errorStr.includes("timeout") ||
+      (isIndianTicker && (errorStr.includes("price_unavailable") || errorStr === ""));
+
+    if (isNetworkError) {
+      watchlist.push(ticker);
+      const result = await setWatchlist(watchlist);
+      els.tickerInput.value = "";
+      els.tickerInput.focus();
+      renderWatchlist(result.watchlist, result.holdings, quoteCache);
+      setStatus(
+        `${ticker} added. Live price unavailable right now \u2014 grades will load on next refresh.`,
+        "warn",
+        "watchlistAdd",
+        "persistent"
+      );
+      return;
+    }
+
+    els.tickerInput.value = ticker;
+    els.tickerInput.focus();
+    setStatus(
+      `${ticker} isn\u2019t a valid tradeable symbol (no live price). Not added \u2014 check the spelling.`,
+      "warn",
+      "watchlistAdd",
+      "error"
+    );
+    return;
+  }
+
+  // Step 2: Valid ticker — add and show price immediately.
+  watchlist.push(ticker);
+  const result = await setWatchlist(watchlist);
+  els.tickerInput.value = "";
+  els.tickerInput.focus();
+
+  quoteCache[ticker] = /** @type {QuoteSnapshot} */ ({
+    ticker: quickQuote.ticker,
+    price: quickQuote.price,
+    currency: quickQuote.currency,
+    grade: null,
+    verdict: null,
+    error: null,
+  });
+  await setCachedQuotes(
+    /** @type {Record<string, Record<string, unknown>>} */ (quoteCache)
+  );
+  renderWatchlist(result.watchlist, result.holdings, quoteCache);
+  setStatus(`Added ${ticker}. Fetching grade\u2026`, "ok", "watchlistAdd", "persistent");
+
+  // Step 3: Fire full snapshot in background to get grade + metrics.
+  refreshQuotes({ quiet: true, tickers: [ticker], skipStatus: true }).then(() => {
+    setStatus(`Added ${ticker}.`, "ok", "watchlistAdd", "transient");
+  });
 }
 
 /**

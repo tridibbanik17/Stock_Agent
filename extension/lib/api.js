@@ -109,3 +109,13 @@ export async function fetchWatchlistSnapshot(tickers) {
     body: JSON.stringify({ watchlist }),
   });
 }
+
+/** Fast price-only check (~1-2s) for Add Ticker validation. */
+export async function fetchQuickPrice(tickers) {
+  const watchlist = (tickers || []).map((t) => String(t).toUpperCase());
+  return request("/api/quotes/price", {
+    method: "POST",
+    signal: AbortSignal.timeout(15_000),
+    body: JSON.stringify({ watchlist }),
+  });
+}

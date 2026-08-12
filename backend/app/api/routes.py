@@ -469,6 +469,27 @@ async def unsubscribe_delete(
     return _unsubscribe_response(record)
 
 
+@router.post("/quotes/price", summary="Fast price-only check (~1-2s)")
+async def quotes_price(
+    body: SnapshotRequest,
+    _: ProtectSnapshot,
+) -> dict[str, Any]:
+    """
+    Fast price + currency only — no fundamentals, no grading.
+    Used for immediate ticker validation and UI feedback on Add Ticker.
+    """
+    if not body.watchlist:
+        return {"quotes": []}
+
+    logger.info("POST /api/quotes/price count=%d", len(body.watchlist))
+    from app.services.market_data import fetch_quick_price
+
+    quotes = []
+    for ticker in body.watchlist[:5]:  # Cap at 5 for fast endpoint
+        quotes.append(fetch_quick_price(ticker))
+    return {"quotes": quotes}
+
+
 @router.post("/quotes/snapshot", summary="Live yfinance snapshot + grades")
 async def quotes_snapshot(
     body: SnapshotRequest,
