@@ -23,7 +23,7 @@ Each factor contributes +1 when healthy, 0 when missing/neutral, and may subtrac
 | 4 | **200-day SMA** | Long-term price trend | yfinance history |
 | 5 | **RSI (14-day)** | Momentum / overbought/oversold | yfinance history |
 
-**Bonus/penalty:** News headlines with risk keywords (lawsuit, probe, fraud, SEBI, etc.) can subtract up to 2 points.
+**Bonus/penalty:** News headlines with risk keywords are scored by severity tier — severe (fraud, SEC, bankruptcy) = -2 each, moderate (lawsuit, downgrade, layoffs) = -1 each, mild (guidance cut) = informational only. Total news penalty capped at -3.
 
 **Factor full-forms:** 
 
@@ -150,15 +150,35 @@ These notes surface risk signals that don't fit cleanly into the 5-factor score 
 
 ## News Risk Penalty
 
-Headlines from Yahoo Finance RSS (+ Indian media outlets) are scanned for risk keywords:
+Headlines from Yahoo Finance RSS (+ Indian media outlets) are scanned for risk keywords and scored by severity tier.
 
-**US/Global:** lawsuit, SEC, fraud, investigation, probe, bankrupt, downgrade, recall, layoff, class action, whistleblower, accounting irregular
+### Severity Tiers
 
-**India-specific:** SEBI, enforcement directorate, ED probe/raid, CBI, income tax raid, NSE/BSE notice/penalty, RBI penalty, NCLT, PMLA, money laundering, promoter pledge
+| Tier | Penalty | Cap | Keywords |
+|------|---------|-----|----------|
+| **Severe** | -2 per headline | -3 total | fraud, bankruptcy, delisting, SEC, indictment, class action, money laundering, PMLA, smuggling, accounting irregularities, restatement, trading halt, scandal, whistleblower, default, ED probe/raid, CBI, NCLT |
+| **Moderate** | -1 per headline | -2 total | lawsuit, investigation, probe, downgrade, earnings miss, recall, layoffs, subpoena, antitrust, fine/penalty, warning letter, SEBI, income tax raid, NSE/BSE notice/penalty, RBI penalty, CCI probe, promoter pledge |
+| **Mild** | 0 (informational only) | — | guidance cut, analyst concern, outlook lower, revenue warning, margin pressure |
 
-**Scoring:** Up to -2 points for risky headlines (capped so one probe doesn't destroy an otherwise strong card).
+### Scoring Rules
 
-**Relevance filter:** Neutral (non-risk) headlines are only shown if they mention the ticker name or contain finance-related language. Generic lifestyle articles are filtered out.
+- Total penalty across all tiers is capped at **-3** (a severe + moderate can stack, but never beyond -3).
+- Positive news is **not scored** — good news is already reflected in price momentum (RSI, SMA position).
+- Only headlines relevant to the specific ticker are scored (relevance filter prevents cross-ticker contamination).
+
+### Email Display
+
+Notes show the severity tier for transparency:
+- `News risk (severe): Company faces SEC fraud investigation`
+- `News risk (moderate): Analyst downgrades stock to sell`
+- `News risk (mild): Company cuts Q4 guidance` (no score impact)
+
+### Relevance Filter
+
+- **Risk headlines:** Must mention the ticker name OR contain finance-related language to be scored.
+- **Neutral headlines:** Only shown if they explicitly mention the ticker symbol. Generic finance articles about other companies are filtered out.
+
+**India-specific keywords:** SEBI, enforcement directorate, ED probe/raid, CBI, income tax raid, NSE/BSE notice/penalty, RBI penalty, NCLT, PMLA, money laundering, promoter pledge.
 
 ## Data Source Priority
 
