@@ -919,10 +919,23 @@ function isPlainObject(value) {
 
 /** @param {unknown} value @returns {string} */
 function normalizeTicker(value) {
-  return String(value ?? "")
+  let sym = String(value ?? "")
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9.\-]/g, "");
+
+  // Normalize US share-class tickers: BRK.B → BRK-B, BF.B → BF-B.
+  // Yahoo Finance uses hyphens for share classes; users commonly type dots.
+  // Only applies to tickers WITHOUT an exchange suffix (.TO, .NS, .BO, etc.).
+  const exchangeSuffixes = [".TO", ".V", ".CN", ".NS", ".BO", ".L", ".T", ".AX"];
+  if (sym.includes(".") && !exchangeSuffixes.some((s) => sym.endsWith(s))) {
+    const parts = sym.split(".");
+    if (parts.length === 2 && parts[1].length <= 2) {
+      sym = `${parts[0]}-${parts[1]}`;
+    }
+  }
+
+  return sym;
 }
 
 /** @param {unknown} value @returns {number|null} */

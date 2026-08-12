@@ -1734,10 +1734,19 @@ async function updateTickerSuggest() {
 // ---------------------------------------------------------------------------
 
 async function onAddTicker() {
-  const ticker = els.tickerInput.value.trim().toUpperCase();
+  let ticker = els.tickerInput.value.trim().toUpperCase();
   if (!ticker) {
     setStatus("Enter a ticker symbol first.", "warn", "watchlistAdd", "error");
     return;
+  }
+
+  // Normalize US share-class dots to hyphens (BRK.B → BRK-B) to match yfinance format.
+  const exchangeSuffixes = [".TO", ".V", ".CN", ".NS", ".BO", ".L", ".T", ".AX"];
+  if (ticker.includes(".") && !exchangeSuffixes.some((s) => ticker.endsWith(s))) {
+    const parts = ticker.split(".");
+    if (parts.length === 2 && parts[1].length <= 2) {
+      ticker = `${parts[0]}-${parts[1]}`;
+    }
   }
 
   const state = await getLocalState();
