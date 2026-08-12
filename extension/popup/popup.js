@@ -1718,7 +1718,11 @@ async function updateTickerSuggest() {
     const meta = document.createElement("span");
     meta.className = "ticker-suggest-meta";
     const label = row.name && row.name !== row.symbol ? row.name : "";
-    meta.textContent = [label, row.exchange].filter(Boolean).join(" · ");
+    const metaText = [label, row.exchange].filter(Boolean).join(" · ");
+    meta.textContent = metaText;
+
+    // Full text on hover for truncated names.
+    btn.title = [row.symbol, label, row.exchange].filter(Boolean).join(" — ");
 
     btn.append(sym, meta);
     li.append(btn);
