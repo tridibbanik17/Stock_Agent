@@ -729,6 +729,17 @@ def _screener_fundamentals(symbol: str) -> dict[str, Any]:
 def analyze_ticker(ticker: str) -> dict[str, Any]:
     """Fetch price + core metrics for one symbol. Never touches portfolio lots."""
     symbol = ticker.strip().upper()
+
+    # Normalize US share-class tickers: BRK.B → BRK-B, BF.B → BF-B.
+    # Yahoo Finance uses hyphens for share classes, but users commonly type dots.
+    # Only apply to tickers without an exchange suffix (e.g., .TO, .NS, .BO).
+    _EXCHANGE_SUFFIXES = (".TO", ".V", ".CN", ".NS", ".BO", ".L", ".T", ".AX")
+    if "." in symbol and not any(symbol.endswith(s) for s in _EXCHANGE_SUFFIXES):
+        # e.g. BRK.B → BRK-B (single dot, last segment is 1-2 chars = share class)
+        parts = symbol.rsplit(".", 1)
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            symbol = f"{parts[0]}-{parts[1]}"
+
     as_of = datetime.now(timezone.utc).isoformat()
     asset_class = "standard"
 
