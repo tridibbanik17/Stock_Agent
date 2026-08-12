@@ -1079,7 +1079,7 @@ function updatePortfolioSummary(watchlist, holdings = {}, quotes = quoteCache) {
   if (currencies.length > 1) {
     const note = document.createElement("p");
     note.className = "portfolio-summary-note";
-    note.textContent = "CAD and USD kept separate — no FX conversion.";
+    note.textContent = `${currencies.join(" and ")} kept separate — no FX conversion.`;
     els.portfolioSummary.appendChild(note);
   }
 }
