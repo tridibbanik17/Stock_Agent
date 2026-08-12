@@ -210,7 +210,7 @@ export function parseGradeExplanations(raw, expectedTickers = []) {
  * @param {Array<Record<string, unknown>>} quotes
  * @returns {Promise<Record<string, string>>}
  */
-async function explainQuotesOnce(key, quotes) {
+export async function explainQuotesOnce(key, quotes) {
   const list = quotes || [];
   const expected = list.map((q) => String(q.ticker || "").toUpperCase());
   try {

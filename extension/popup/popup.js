@@ -6,7 +6,7 @@
  */
 
 import { fetchWatchlistSnapshot, subscribeDelivery } from "../lib/api.js";
-import { explainQuotesBatch, generateGeminiText } from "../lib/gemini.js";
+import { explainQuotesOnce, generateGeminiText } from "../lib/gemini.js";
 import { suggestTickers } from "../lib/tickers.js";
 import {
   MAX_SEND_TIMES,
@@ -1451,6 +1451,7 @@ async function refreshQuotesInternal(opts = {}) {
 
 /**
  * Optional: explain only tickers that still need a blurb (keeps successes on retry).
+ * Progressive: updates UI after each chunk so explanations stream in visually.
  */
 async function onExplainGrades() {
   const key =
@@ -1498,36 +1499,93 @@ async function onExplainGrades() {
     return;
   }
 
+  // Sort pending by the user's current watchlist sort order so explanations
+  // stream in from top to bottom as they appear on screen.
+  const sortedTickers = sortWatchlistTickers(
+    pending.map((q) => String(q.ticker || "")),
+    state.holdings,
+    quoteCache
+  );
+  const pendingSorted = sortedTickers
+    .map((t) => pending.find((q) => String(q.ticker || "") === t))
+    .filter(Boolean);
+
   const generation = ++aiExplainGeneration;
   aiExplainCache = nextCache;
   renderWatchlist(watchlist, state.holdings, quoteCache);
-  updateExplainButtonLabel(pending.length);
+  updateExplainButtonLabel(pendingSorted.length);
 
   els.explainGrades.disabled = true;
   setStatus(
     alreadyOk
-      ? `Explaining ${pending.length} remaining grade${pending.length === 1 ? "" : "s"}…`
-      : `Gemini explaining ${pending.length} grade${pending.length === 1 ? "" : "s"}…`,
+      ? `Explaining ${pendingSorted.length} remaining grade${pendingSorted.length === 1 ? "" : "s"}…`
+      : `Gemini explaining ${pendingSorted.length} grade${pendingSorted.length === 1 ? "" : "s"}…`,
     "info",
     "ai",
     "persistent"
   );
 
-  try {
-    const { map, calls } = await explainQuotesBatch(key, pending);
-    if (generation !== aiExplainGeneration) return;
+  let calls = 0;
+  const chunkSize = 2; // EXPLAIN_CHUNK_SIZE
 
-    for (const q of pending) {
-      const ticker = String(q.ticker || "");
-      const text = map[ticker] || map[ticker.toUpperCase()];
-      aiExplainCache[ticker] = text
-        ? { status: "ok", text }
-        : {
-            status: "error",
-            text: "No explanation returned for this ticker.",
-          };
-      patchAiBlurb(ticker);
+  try {
+    for (let i = 0; i < pendingSorted.length; i += chunkSize) {
+      if (generation !== aiExplainGeneration) return;
+      const chunk = pendingSorted.slice(i, i + chunkSize);
+
+      try {
+        const map = await explainQuotesOnce(key, chunk);
+        calls += 1;
+        if (generation !== aiExplainGeneration) return;
+
+        for (const q of chunk) {
+          const ticker = String(q.ticker || "");
+          const text = map[ticker] || map[ticker.toUpperCase()];
+          aiExplainCache[ticker] = text
+            ? { status: "ok", text }
+            : { status: "error", text: "No explanation returned." };
+          patchAiBlurb(ticker);
+        }
+      } catch (chunkError) {
+        calls += 1;
+        if (generation !== aiExplainGeneration) return;
+        // Retry each ticker individually for this failed chunk.
+        for (const q of chunk) {
+          const ticker = String(q.ticker || "");
+          try {
+            const map = await explainQuotesOnce(key, [q]);
+            calls += 1;
+            if (generation !== aiExplainGeneration) return;
+            const text = map[ticker] || map[ticker.toUpperCase()];
+            aiExplainCache[ticker] = text
+              ? { status: "ok", text }
+              : { status: "error", text: "No explanation returned." };
+          } catch {
+            calls += 1;
+            aiExplainCache[ticker] = {
+              status: "error",
+              text: formatGeminiError(chunkError),
+            };
+          }
+          patchAiBlurb(ticker);
+        }
+      }
+
+      // Update progress status after each chunk.
+      const okCount = Object.values(aiExplainCache).filter(
+        (e) => e?.status === "ok"
+      ).length;
+      const stillMissing = quotes.length - okCount;
+      updateExplainButtonLabel(stillMissing);
+      setStatus(
+        `Explained ${okCount} / ${quotes.length} grades…`,
+        "info",
+        "ai",
+        "persistent"
+      );
     }
+
+    if (generation !== aiExplainGeneration) return;
 
     const okCount = Object.values(aiExplainCache).filter(
       (e) => e?.status === "ok"
@@ -1553,16 +1611,17 @@ async function onExplainGrades() {
       );
     }
   } catch (error) {
-    console.error("[AI explain batch] failed", error);
+    console.error("[AI explain progressive] failed", error);
     if (generation !== aiExplainGeneration) return;
     const msg = formatGeminiError(error);
-    // Keep already-ok blurbs; only mark the ones we tried this pass.
-    for (const q of pending) {
+    for (const q of pendingSorted) {
       const ticker = String(q.ticker || "");
-      aiExplainCache[ticker] = { status: "error", text: msg };
-      patchAiBlurb(ticker);
+      if (!aiExplainCache[ticker] || aiExplainCache[ticker].status !== "ok") {
+        aiExplainCache[ticker] = { status: "error", text: msg };
+        patchAiBlurb(ticker);
+      }
     }
-    updateExplainButtonLabel(pending.length);
+    updateExplainButtonLabel(pendingSorted.length);
     setStatus(msg, "error", "ai", "error");
   } finally {
     els.explainGrades.disabled = false;
