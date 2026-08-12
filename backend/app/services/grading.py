@@ -4,17 +4,44 @@ from __future__ import annotations
 
 from typing import Any
 
-# Headlines that justify a score penalty (lawsuits, probes, misses, etc.).
-_RISKY_NEWS_KEYS = (
+# ---------------------------------------------------------------------------
+# Tiered news severity scoring.
+# Tier 1 (severe): -2 per headline, cap at -3 total.
+# Tier 2 (moderate): -1 per headline, cap at -2 total.
+# Tier 3 (mild): informational only, no score impact.
+# ---------------------------------------------------------------------------
+
+_TIER1_SEVERE_KEYS = (
+    "fraud",
+    "bankrupt",
+    "delist",
+    "sec ",
+    "indict",
+    "class action",
+    "money laundering",
+    "pmla",
+    "smuggl",
+    "accounting irregular",
+    "restat",
+    "trading halt",
+    "scandal",
+    "whistleblower",
+    "default",
+    # Indian severe
+    "enforcement directorate",
+    "ed probe",
+    "ed raid",
+    "cbi",
+    "nclt",
+)
+
+_TIER2_MODERATE_KEYS = (
     "lawsuit",
     "sued",
     "suing",
-    "sec ",
-    "fraud",
     "investigation",
     "investigat",
     "probe",
-    "bankrupt",
     "downgrade",
     "misses",
     "missed earnings",
@@ -23,28 +50,13 @@ _RISKY_NEWS_KEYS = (
     "layoff",
     "layoffs",
     "subpoena",
-    "indict",
-    "default",
-    "delist",
-    "trading halt",
-    "smuggl",
     "antitrust",
     "fine ",
     "fined",
     "penalty",
-    "scandal",
-    "cut guidance",
     "warning letter",
-    "class action",
-    "whistleblower",
-    "accounting irregular",
-    "restat",
-    # Indian regulatory / enforcement keywords
+    # Indian moderate
     "sebi",
-    "enforcement directorate",
-    "ed probe",
-    "ed raid",
-    "cbi",
     "income tax raid",
     "it raid",
     "nse notice",
@@ -54,11 +66,53 @@ _RISKY_NEWS_KEYS = (
     "cci probe",
     "rbi penalty",
     "rbi action",
-    "nclt",
-    "pmla",
-    "money laundering",
     "promoter pledge",
 )
+
+_TIER3_MILD_KEYS = (
+    "cut guidance",
+    "analyst concern",
+    "outlook lower",
+    "guidance cut",
+    "revenue warning",
+    "margin pressure",
+)
+
+# Combined set for headline detection (any tier counts as "risky" for filtering).
+_RISKY_NEWS_KEYS = _TIER1_SEVERE_KEYS + _TIER2_MODERATE_KEYS + _TIER3_MILD_KEYS
+
+
+def _headline_severity(title: str) -> int:
+    """
+    Return severity tier for a headline: 1 (severe), 2 (moderate), 3 (mild), 0 (not risky).
+    """
+    text = f" {str(title or '').lower()} "
+    if any(key in text for key in _TIER1_SEVERE_KEYS):
+        return 1
+    if any(key in text for key in _TIER2_MODERATE_KEYS):
+        return 2
+    if any(key in text for key in _TIER3_MILD_KEYS):
+        return 3
+    return 0
+
+
+def _calculate_news_penalty(risky_news: list[dict[str, str]]) -> int:
+    """
+    Tiered news penalty:
+      Tier 1 (severe): -2 per headline, cap at -3 total.
+      Tier 2 (moderate): -1 per headline, cap at -2 total.
+      Tier 3 (mild): no penalty (informational only).
+    Total penalty is the sum, capped at -3.
+    """
+    total = 0
+    for item in risky_news:
+        tier = _headline_severity(item.get("title", ""))
+        if tier == 1:
+            total += 2
+        elif tier == 2:
+            total += 1
+        # Tier 3: no penalty
+    return min(total, 3)
 
 
 def _parse_roe_pct(roe_list: list[str]) -> list[float]:
@@ -236,10 +290,13 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
             and _headline_relevant_for_risk(item.get("title", ""), ticker_name)
         ]
         if risky_news:
-            penalty = min(2, len(risky_news))
+            penalty = _calculate_news_penalty(risky_news)
             score = max(0, score - penalty)
             for item in risky_news[:3]:
-                notes.append(f"News risk: {item['title']}")
+                tier = _headline_severity(item.get("title", ""))
+                severity_label = {1: "severe", 2: "moderate", 3: "mild"}.get(tier, "")
+                prefix = f"News risk ({severity_label})" if severity_label else "News risk"
+                notes.append(f"{prefix}: {item['title']}")
         elif news_items:
             relevant = [
                 item for item in news_items
@@ -472,21 +529,26 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
     else:
         missing_data.append("RSI")
 
-    # --- News: only penalize clearly risky headlines ---
+    # --- News: tiered severity scoring ---
     # IMPORTANT: Risk headlines must also be relevant to the ticker.
     # A generic article about "bankruptcy" that doesn't mention the stock
     # should not penalize the score (e.g. Spotify getting an athlete bankruptcy article).
+    # Tier 1 (severe): -2 per headline, cap total at -3.
+    # Tier 2 (moderate): -1 per headline, cap total at -2.
+    # Tier 3 (mild): informational only, no score impact.
     risky_news = [
         item for item in news_items
         if _is_risky_headline(item.get("title", ""))
         and _headline_relevant_for_risk(item.get("title", ""), ticker_name)
     ]
     if risky_news:
-        # Cap at -2 so one probe does not erase an otherwise strong card.
-        penalty = min(2, len(risky_news))
+        penalty = _calculate_news_penalty(risky_news)
         score = max(0, score - penalty)
         for item in risky_news[:3]:
-            notes.append(f"News risk: {item['title']}")
+            tier = _headline_severity(item.get("title", ""))
+            severity_label = {1: "severe", 2: "moderate", 3: "mild"}.get(tier, "")
+            prefix = f"News risk ({severity_label})" if severity_label else "News risk"
+            notes.append(f"{prefix}: {item['title']}")
     elif news_items:
         # Only show neutral headlines that explicitly mention the ticker.
         # Generic finance articles about other companies are filtered out.
