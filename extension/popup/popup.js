@@ -90,7 +90,7 @@ let quotesPending = /** @type {Set<string>} */ (new Set());
 /** When quotes were last successfully refreshed (local clock). */
 let quotesUpdatedAt = /** @type {Date|null} */ (null);
 /** Skip auto-refresh on popup reopen if cache is newer than this. */
-const QUOTE_FRESH_MS = 5 * 60 * 1000;
+const QUOTE_FRESH_MS = 10 * 60 * 1000;
 /** @type {'symbol'|'grade'|'pnl'} */
 let watchlistSort = "symbol";
 /**
