@@ -37,12 +37,13 @@
         <span id="watchlist-count" class="badge" aria-live="polite">0 / 25</span>
       </header>
 
-      <aside class="disclaimer" role="note">
+      <aside id="privacy-banner" class="disclaimer" role="note">
         <strong
           >🔒 Privacy First: Your shares and buy prices are saved locally on
           your device and are 100% invisible to us. Only tickers are
           synchronized to run your automated report.</strong
         >
+        <button type="button" id="dismiss-privacy" class="dismiss-banner" aria-label="Dismiss privacy notice" title="Got it — hide for now">✕</button>
       </aside>
 
       <!-- Watchlist + private lots -->
@@ -332,14 +333,14 @@
       <details id="tips-panel" class="tips-panel">
         <summary class="tips-toggle">💡 Tips &amp; shortcuts</summary>
         <ul class="tips-list">
-          <li><kbd id="shortcut-key"></kbd> — open / close Stock Agent side panel</li>
-          <li>Customize the shortcut anytime at <strong>chrome://extensions/shortcuts</strong></li>
-          <li>Sort by <strong>Currency</strong> to group USD, CAD, and INR tickers together</li>
+          <li><kbd id="shortcut-key"></kbd> — open or close this side panel</li>
+          <li>You can change this shortcut at <strong>chrome://extensions/shortcuts</strong></li>
+          <li><strong>Sort options:</strong> Symbol (A–Z), Grade (best first), Profit/loss (highest gain first), Currency (groups USD, CAD, INR together)</li>
           <li>Shares and avg buy price are <strong>private</strong> — stored only on this device, never uploaded</li>
-          <li>Grades update when you click <strong>Refresh</strong> — the extension never fetches data in the background on its own</li>
-          <li>Gemini AI explains grades in plain English but never changes the score</li>
-          <li>Email schedule auto-detects your timezone — change it in your OS settings if wrong</li>
-          <li>Max 25 tickers · max 2 emails per day · works across US, Canada, and India</li>
+          <li>Click <strong>Refresh</strong> to fetch the latest prices and grades from the market</li>
+          <li><strong>AI analysis</strong> uses your own Gemini key to explain grades in plain English — it never changes the score itself</li>
+          <li>Your email schedule auto-detects your timezone from your operating system</li>
+          <li>Max 25 tickers · max 2 emails per day · supports US, Canada, and India exchanges</li>
         </ul>
       </details>
 

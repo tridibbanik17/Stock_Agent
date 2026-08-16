@@ -189,6 +189,14 @@ body {
   border-left: 3px solid var(--disclaimer-border);
   padding: 10px 11px;
   border-radius: 0 8px 8px 0;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.disclaimer[hidden] {
+  display: none !important;
 }
 
 .disclaimer strong {
@@ -198,6 +206,25 @@ body {
   line-height: 1.45;
   font-weight: 700;
   letter-spacing: 0.01em;
+  flex: 1;
+}
+
+.dismiss-banner {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.dismiss-banner:hover {
+  color: var(--text);
+  border-color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* Panels */

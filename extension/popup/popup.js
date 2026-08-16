@@ -345,6 +345,16 @@ function bindEvents() {
     void onClearAllSettings();
   });
 
+  // Privacy banner dismiss (reappears after 24 hours).
+  const dismissBtn = document.getElementById("dismiss-privacy");
+  if (dismissBtn) {
+    dismissBtn.addEventListener("click", () => {
+      const banner = document.getElementById("privacy-banner");
+      if (banner) banner.hidden = true;
+      chrome.storage.local.set({ privacyDismissedAt: Date.now() });
+    });
+  }
+
   els.refreshQuotes.addEventListener("click", () => {
     void refreshQuotes({ quiet: false });
   });
@@ -529,6 +539,17 @@ function updateCountBadge(count) {
 
 async function hydrateFromStorage() {
   const state = await getLocalState();
+
+  // Privacy banner: show if never dismissed or dismissed > 24 hours ago.
+  try {
+    const banner = document.getElementById("privacy-banner");
+    if (banner) {
+      const result = await chrome.storage.local.get("privacyDismissedAt");
+      const dismissedAt = Number(result.privacyDismissedAt || 0);
+      const hoursSince = (Date.now() - dismissedAt) / (1000 * 60 * 60);
+      banner.hidden = dismissedAt > 0 && hoursSince < 24;
+    }
+  } catch { /* show banner on error */ }
 
   els.email.value = state.delivery.email || "";
   applyScheduleToDom(normalizeSchedule(state.delivery.schedule));
@@ -923,6 +944,7 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     const symbol = document.createElement("span");
     symbol.className = "symbol";
     symbol.textContent = ticker;
+    symbol.title = ticker;
 
     const shares = document.createElement("input");
     shares.type = "number";
@@ -1150,9 +1172,11 @@ function buildPnLNode(lot, quote) {
   const absPnl = Math.abs(stats.pnl);
   const absPct = Math.abs(stats.pnlPct);
   el.classList.add(stats.pnl >= 0 ? "is-gain" : "is-loss");
-  el.textContent =
+  const pnlText =
     `Value ${formatMoney(stats.value)} ${stats.currency} · ` +
     `Profit/loss ${sign}${formatMoney(absPnl)} (${sign}${absPct.toFixed(1)}%)`;
+  el.textContent = pnlText;
+  el.title = pnlText;
   return el;
 }
 
@@ -1266,7 +1290,9 @@ function buildQuoteMetaNodes(quote, ticker = "") {
   priceEl.className = "quote-price";
   if (typeof quote.price === "number") {
     const cur = quote.currency || "USD";
-    priceEl.textContent = `Price ${formatPrice(quote.price)} ${cur}`;
+    const priceText = `Price ${formatPrice(quote.price)} ${cur}`;
+    priceEl.textContent = priceText;
+    priceEl.title = priceText;
   } else {
     priceEl.textContent = "Price n/a";
   }
@@ -1275,6 +1301,7 @@ function buildQuoteMetaNodes(quote, ticker = "") {
   const grade = String(quote.grade || "HOLD");
   gradeEl.className = `quote-grade grade-${grade.toLowerCase()}`;
   gradeEl.textContent = quote.verdict || grade;
+  gradeEl.title = quote.verdict || grade;
 
   return [priceEl, gradeEl];
 }
