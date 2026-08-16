@@ -1785,8 +1785,9 @@ button.preset-chip.is-active {
 }
 
 .tips-toggle::before {
-  content: "▶ ";
+  content: "▶";
   font-size: 0.65rem;
+  margin-right: 8px;
   transition: transform 0.2s ease;
   display: inline-block;
 }
@@ -1861,9 +1862,10 @@ button.preset-chip.is-active {
 }
 
 .clear-settings-panel .clear-settings::before {
-  content: "▶ ";
+  content: "▶";
   font-size: 0.65rem;
   display: inline-block;
+  margin-right: 8px;
   transition: transform 0.2s ease;
 }
 
