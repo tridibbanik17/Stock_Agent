@@ -579,11 +579,14 @@ button.time-remove:hover {
   grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: start;
+  position: relative;
+  z-index: 30;
 }
 
 .ticker-suggest-wrap {
   position: relative;
   min-width: 0;
+  z-index: 30;
 }
 
 .ticker-suggest {
@@ -591,15 +594,17 @@ button.time-remove:hover {
   margin: 4px 0 0;
   padding: 4px;
   position: absolute;
-  z-index: 20;
+  z-index: 30;
   left: 0;
-  right: 0;
-  max-height: 180px;
+  min-width: 280px;
+  max-width: 420px;
+  width: max-content;
+  max-height: 260px;
   overflow: auto;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: #0e151d;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 .ticker-suggest[hidden] {
