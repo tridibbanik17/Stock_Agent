@@ -67,7 +67,7 @@ const els = {
   toggleKey: /** @type {HTMLButtonElement} */ ($("toggle-key")),
   testAi: /** @type {HTMLButtonElement} */ ($("test-ai")),
   explainGrades: /** @type {HTMLButtonElement} */ ($("explain-grades")),
-  clearSettings: /** @type {HTMLButtonElement} */ ($("clear-settings")),
+  clearSettings: /** @type {HTMLElement} */ ($("clear-all")),
   watchlistCount: /** @type {HTMLElement} */ ($("watchlist-count")),
   listHead: /** @type {HTMLElement} */ ($("list-head")),
   sortRow: /** @type {HTMLElement} */ ($("sort-row")),
@@ -332,6 +332,12 @@ function bindEvents() {
   els.geminiKey.addEventListener("blur", () => {
     void persistGeminiKeyQuiet();
   });
+  els.geminiKey.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void persistGeminiKeyQuiet();
+    }
+  });
 
   els.testAi.addEventListener("click", () => {
     void onTestAi();
@@ -344,6 +350,44 @@ function bindEvents() {
   els.clearSettings.addEventListener("click", () => {
     void onClearAllSettings();
   });
+
+  // Granular clear options
+  const clearWatchlistBtn = document.getElementById("clear-watchlist");
+  if (clearWatchlistBtn) {
+    clearWatchlistBtn.addEventListener("click", async () => {
+      if (!window.confirm("Remove all tickers from your watchlist?")) return;
+      await setWatchlist([]);
+      quoteCache = {};
+      aiExplainCache = {};
+      aiExplainGeneration += 1;
+      renderWatchlist([], {}, quoteCache);
+      setStatus("All tickers removed.", "ok", "global", "transient");
+    });
+  }
+
+  const clearLotsBtn = document.getElementById("clear-lots");
+  if (clearLotsBtn) {
+    clearLotsBtn.addEventListener("click", async () => {
+      if (!window.confirm("Clear all shares and avg buy prices? Your tickers will remain.")) return;
+      const state = await getLocalState();
+      const emptyLots = {};
+      for (const ticker of state.watchlist) {
+        emptyLots[ticker] = { shares: null, buyPrice: null };
+      }
+      await setHoldings(emptyLots);
+      renderWatchlist(state.watchlist, emptyLots, quoteCache);
+      setStatus("Private lots cleared. Tickers kept.", "ok", "global", "transient");
+    });
+  }
+
+  const clearGeminiBtn = document.getElementById("clear-gemini");
+  if (clearGeminiBtn) {
+    clearGeminiBtn.addEventListener("click", async () => {
+      await setGeminiKey("");
+      els.geminiKey.value = "";
+      setStatus("Gemini key removed.", "ok", "ai", "transient");
+    });
+  }
 
   // Privacy banner dismiss (reappears after 24 hours).
   const dismissBtn = document.getElementById("dismiss-privacy");

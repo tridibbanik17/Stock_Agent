@@ -319,9 +319,15 @@
         ></p>
       </section>
 
-      <button type="button" id="clear-settings" class="clear-settings">
-        Clear all settings
-      </button>
+      <details class="clear-settings-panel">
+        <summary class="clear-settings">Clear settings…</summary>
+        <div class="clear-options">
+          <button type="button" id="clear-watchlist" class="ghost clear-option">Remove all tickers</button>
+          <button type="button" id="clear-lots" class="ghost clear-option">Clear private lots only</button>
+          <button type="button" id="clear-gemini" class="ghost clear-option">Remove Gemini key</button>
+          <button type="button" id="clear-all" class="ghost clear-option clear-danger">Reset everything</button>
+        </div>
+      </details>
       <p
         id="status-global"
         class="status status-inline"
