@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Stock Agent",
   "version": "0.1.86",
-  "description": "A privacy-first stock dashboard that blends AI context with fundamentals to expose value traps and automate your watchlist reports.",
+  "description": "A privacy-first stock dashboard that grades your watchlist using deterministic rules — no AI. Optional AI explanations via your own Gemini key.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -10,18 +10,21 @@
   },
   "action": {
     "default_title": "Stock Agent",
-    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png"
     }
+  },
+  "side_panel": {
+    "default_path": "popup/popup.html"
   },
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://api.stockagent.app/*",

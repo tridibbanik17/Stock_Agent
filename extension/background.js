@@ -1,6 +1,6 @@
 /**
- * MV3 service worker — lightweight message router.
- * Popup now talks to storage.js directly for most UX paths.
+ * MV3 service worker — lightweight message router + side panel launcher.
+ * Panel talks to storage.js directly for most UX paths.
  * SYNC_DELIVERY remains a dry-run (console.log) until the API is live.
  */
 
@@ -13,6 +13,12 @@ import {
   setHoldings,
   setWatchlist,
 } from "./lib/storage.js";
+
+// ---------------------------------------------------------------------------
+// Side panel: open on extension icon click
+// ---------------------------------------------------------------------------
+
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
 chrome.runtime.onInstalled.addListener(async () => {
   const state = await getLocalState();
