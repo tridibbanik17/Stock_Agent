@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "StockAgent - Live stock grades, rule-based scoring & auto email reports",
-  "version": "0.1.107",
+  "version": "0.1.108",
   "description": "A privacy-first stock dashboard that grades your watchlist using deterministic rules — no AI. Optional AI explanations via your own Gemini key.",
   "icons": {
     "16": "icons/icon16.png",
