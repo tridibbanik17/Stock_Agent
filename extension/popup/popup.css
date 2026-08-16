@@ -558,7 +558,8 @@ button.add-time-btn:hover:not(:disabled) {
   border-color: var(--accent);
 }
 
-button.time-remove:hover {
+button.time-remove:hover,
+button.time-remove:active {
   color: #fff;
   background: #8b2e2e;
   border-color: #c0392b;
@@ -1617,6 +1618,14 @@ button.preset-chip.is-active {
 }
 
 :root[data-theme="light"] button.remove:hover {
+  color: #ffffff;
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+/* Light mode: time-remove (✕ in scheduler) */
+:root[data-theme="light"] button.time-remove:hover,
+:root[data-theme="light"] button.time-remove:active {
   color: #ffffff;
   background: #dc2626;
   border-color: #dc2626;
