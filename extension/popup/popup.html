@@ -11,15 +11,9 @@
       <header class="brand">
         <div class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 28 28" width="28" height="28" fill="none" aria-hidden="true">
-            <polyline
-              points="4,20 9,15 13,18 18,10 24,8"
-              stroke="rgba(255,255,255,0.9)"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              fill="none"
-            />
-            <circle cx="24" cy="8" r="2" fill="rgba(255,255,255,0.9)" />
+            <rect x="5" y="16" width="4" height="8" rx="1" fill="rgba(255,255,255,0.55)" />
+            <rect x="12" y="10" width="4" height="14" rx="1" fill="rgba(255,255,255,0.75)" />
+            <rect x="19" y="4" width="4" height="20" rx="1" fill="rgba(255,255,255,0.95)" />
           </svg>
         </div>
         <div>
@@ -131,6 +125,9 @@
             </button>
             <button type="button" class="sort-chip" data-sort="pnl" aria-pressed="false">
               Profit/loss
+            </button>
+            <button type="button" class="sort-chip" data-sort="currency" aria-pressed="false">
+              Currency
             </button>
           </div>
         </div>
@@ -330,6 +327,20 @@
         aria-live="polite"
         hidden
       ></p>
+
+      <!-- Collapsible tips -->
+      <details id="tips-panel" class="tips-panel">
+        <summary class="tips-toggle">💡 Tips &amp; shortcuts</summary>
+        <ul class="tips-list">
+          <li><kbd>Alt+S</kbd> — open / close Stock Agent side panel</li>
+          <li>Sort by <strong>Currency</strong> to group USD, CAD, and INR tickers together</li>
+          <li>Shares and avg buy price are <strong>private</strong> — stored only on this device, never uploaded</li>
+          <li>Grades update on <strong>Refresh</strong> — no background polling to save resources</li>
+          <li>Gemini AI explains grades in plain English but never changes the score</li>
+          <li>Email schedule auto-detects your timezone — change it in your OS settings if wrong</li>
+          <li>Max 25 tickers · max 2 emails per day · works across US, Canada, and India</li>
+        </ul>
+      </details>
 
       <aside class="legal-disclaimer" role="note">
         Educational tool only. Ratings are calculated via rule-based

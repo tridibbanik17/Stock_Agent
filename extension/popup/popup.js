@@ -91,7 +91,7 @@ let quotesPending = /** @type {Set<string>} */ (new Set());
 let quotesUpdatedAt = /** @type {Date|null} */ (null);
 /** Skip auto-refresh on popup reopen if cache is newer than this. */
 const QUOTE_FRESH_MS = 10 * 60 * 1000;
-/** @type {'symbol'|'grade'|'pnl'} */
+/** @type {'symbol'|'grade'|'pnl'|'currency'} */
 let watchlistSort = "symbol";
 /**
  * Local Gemini blurbs keyed by ticker.
@@ -168,6 +168,26 @@ async function init() {
   // Reuse local cache on quick reopen; only fetch when stale or incomplete.
   void maybeAutoRefreshQuotes();
   window.setInterval(() => updateQuotesUpdatedLabel(), 30_000);
+
+  // Restore scroll position from last session.
+  try {
+    const scrollResult = await chrome.storage.local.get("panelScrollY");
+    const savedY = Number(scrollResult.panelScrollY || 0);
+    if (savedY > 0) {
+      requestAnimationFrame(() => window.scrollTo(0, savedY));
+    }
+  } catch { /* ignore */ }
+
+  // Save scroll position periodically and on unload.
+  let scrollSaveTimer = 0;
+  const saveScroll = () => {
+    chrome.storage.local.set({ panelScrollY: Math.round(window.scrollY) });
+  };
+  window.addEventListener("scroll", () => {
+    clearTimeout(scrollSaveTimer);
+    scrollSaveTimer = window.setTimeout(saveScroll, 300);
+  }, { passive: true });
+  window.addEventListener("beforeunload", saveScroll);
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +342,7 @@ function bindEvents() {
     const btn = /** @type {HTMLElement} */ (event.target).closest("[data-sort]");
     if (!(btn instanceof HTMLButtonElement)) return;
     const mode = btn.dataset.sort;
-    if (mode !== "symbol" && mode !== "grade" && mode !== "pnl") return;
+    if (mode !== "symbol" && mode !== "grade" && mode !== "pnl" && mode !== "currency") return;
     watchlistSort = mode;
     chrome.storage.local.set({ watchlistSort: mode });
     for (const chip of els.sortRow.querySelectorAll(".sort-chip")) {
@@ -507,7 +527,7 @@ async function hydrateFromStorage() {
   try {
     const sortResult = await chrome.storage.local.get("watchlistSort");
     const saved = sortResult.watchlistSort;
-    if (saved === "symbol" || saved === "grade" || saved === "pnl") {
+    if (saved === "symbol" || saved === "grade" || saved === "pnl" || saved === "currency") {
       watchlistSort = saved;
       for (const chip of els.sortRow.querySelectorAll(".sort-chip")) {
         if (!(chip instanceof HTMLButtonElement)) continue;
@@ -968,6 +988,20 @@ function sortWatchlistTickers(watchlist, holdings, quotes) {
   }
   if (watchlistSort === "grade") {
     return list.sort((a, b) => gradeRank(quotes[b]) - gradeRank(quotes[a]) || a.localeCompare(b));
+  }
+  if (watchlistSort === "currency") {
+    // Group by currency (USD first, then CAD, then INR, then others alphabetically)
+    const currencyOrder = { USD: 0, CAD: 1, INR: 2 };
+    const getCur = (t) => String(quotes[t]?.currency || "USD").toUpperCase();
+    return list.sort((a, b) => {
+      const ca = getCur(a);
+      const cb = getCur(b);
+      const oa = currencyOrder[ca] ?? 99;
+      const ob = currencyOrder[cb] ?? 99;
+      if (oa !== ob) return oa - ob;
+      if (ca !== cb) return ca.localeCompare(cb);
+      return a.localeCompare(b);
+    });
   }
   // P&L: highest gain first; tickers without a position sink to the bottom.
   return list.sort((a, b) => {
