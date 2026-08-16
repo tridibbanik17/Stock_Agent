@@ -278,9 +278,9 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
             if rsi < 35:
                 score += 1
                 notes.append("RSI shows selling fatigue - possible mean-reversion zone.")
-            elif rsi > 70:
+            elif rsi >= 70:
                 score -= 1
-                notes.append("RSI is overbought (>70) - avoid chasing; risk of pullbacks.")
+                notes.append("RSI is overbought (>=70) - avoid chasing; risk of pullbacks.")
         else:
             missing_data.append("RSI")
 
@@ -523,9 +523,9 @@ def grade_metrics(metrics: dict[str, Any], news_flags: list[Any] | None = None) 
         if rsi < 35:
             score += 1
             notes.append("RSI shows selling fatigue - possible mean-reversion zone.")
-        elif rsi > 70:
+        elif rsi >= 70:
             score = max(0, score - 1)
-            notes.append("RSI is overbought (>70) - avoid chasing; risk of pullbacks.")
+            notes.append("RSI is overbought (>=70) - avoid chasing; risk of pullbacks.")
     else:
         missing_data.append("RSI")
 
