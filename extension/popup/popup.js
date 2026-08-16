@@ -339,6 +339,13 @@ function bindEvents() {
   els.watchlist.addEventListener("change", () => {
     void persistHoldingsFromDom(holdingsLastEditedTicker);
   });
+
+  // Prevent scroll-to-change on number inputs (accidental value changes).
+  els.watchlist.addEventListener("wheel", (event) => {
+    if (event.target instanceof HTMLInputElement && event.target.type === "number") {
+      event.target.blur();
+    }
+  }, { passive: true });
 }
 
 /**
@@ -889,7 +896,7 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     const shares = document.createElement("input");
     shares.type = "number";
     shares.min = "0";
-    shares.step = "0.0001";
+    shares.step = "any";
     shares.inputMode = "decimal";
     shares.placeholder = "Shares";
     shares.title = "Number of shares owned (private)";
@@ -902,7 +909,7 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     const buyPrice = document.createElement("input");
     buyPrice.type = "number";
     buyPrice.min = "0";
-    buyPrice.step = "0.01";
+    buyPrice.step = "any";
     buyPrice.inputMode = "decimal";
     buyPrice.placeholder = "Avg price";
     buyPrice.title = "Average buy price (private)";
