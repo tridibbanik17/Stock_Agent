@@ -1848,24 +1848,31 @@ button.preset-chip.is-active {
   display: block;
   width: 100%;
   padding: 10px 14px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 650;
   color: var(--muted);
   background: transparent;
   border: none;
   border-radius: 0;
   cursor: pointer;
-  text-align: center;
+  text-align: left;
   list-style: none;
+  user-select: none;
+}
+
+.clear-settings-panel .clear-settings::before {
+  content: "▶ ";
+  font-size: 0.65rem;
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.clear-settings-panel[open] .clear-settings::before {
+  transform: rotate(90deg);
 }
 
 .clear-settings-panel .clear-settings::after {
-  content: " ▼";
-  font-size: 0.85rem;
-}
-
-.clear-settings-panel[open] .clear-settings::after {
-  content: " ▲";
+  content: none;
 }
 
 .clear-settings-panel .clear-settings::-webkit-details-marker {
