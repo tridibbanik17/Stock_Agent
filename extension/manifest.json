@@ -30,7 +30,9 @@
     "_execute_action": {
       "suggested_key": {
         "default": "Alt+S",
-        "mac": "Alt+S"
+        "mac": "MacCtrl+Shift+S",
+        "chromeos": "Alt+S",
+        "linux": "Alt+S"
       },
       "description": "Open Stock Agent side panel"
     }

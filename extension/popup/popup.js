@@ -188,6 +188,17 @@ async function init() {
     scrollSaveTimer = window.setTimeout(saveScroll, 300);
   }, { passive: true });
   window.addEventListener("beforeunload", saveScroll);
+
+  // Set keyboard shortcut label based on user's OS.
+  const shortcutEl = document.getElementById("shortcut-key");
+  if (shortcutEl) {
+    const isMac = navigator.platform?.toUpperCase().includes("MAC") ||
+                  navigator.userAgent?.includes("Macintosh");
+    shortcutEl.textContent = isMac ? "⌃⇧S" : "Alt+S";
+    shortcutEl.title = isMac
+      ? "Control + Shift + S (customizable at chrome://extensions/shortcuts)"
+      : "Alt + S (customizable at chrome://extensions/shortcuts)";
+  }
 }
 
 // ---------------------------------------------------------------------------
