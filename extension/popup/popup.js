@@ -383,6 +383,7 @@ function bindEvents() {
   const clearGeminiBtn = document.getElementById("clear-gemini");
   if (clearGeminiBtn) {
     clearGeminiBtn.addEventListener("click", async () => {
+      if (!window.confirm("Remove your Gemini API key? You can paste a new one anytime.")) return;
       await setGeminiKey("");
       els.geminiKey.value = "";
       setStatus("Gemini key removed.", "ok", "ai", "transient");
