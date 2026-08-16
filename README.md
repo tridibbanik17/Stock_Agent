@@ -84,10 +84,9 @@ Ticker autocomplete coverage (NASDAQ / NYSE / TSX counts): see **[docs/TICKER_CA
 ```
 extension/          Chrome extension (popup + storage + API client)
 backend/            FastAPI app, services, cron worker
-.github/workflows/  Scheduled reports + extension version bump
+.github/workflows/  CI tests + extension version bump
 docs/               Extra docs (data flow, deploy, ticker catalog)
 scripts/            Optional local version bump (PowerShell)
-render.yaml         Render Blueprint for hosted FastAPI
 ```
 
 ## Quick start
