@@ -1859,6 +1859,15 @@ button.preset-chip.is-active {
   list-style: none;
 }
 
+.clear-settings-panel .clear-settings::after {
+  content: " ▾";
+  font-size: 0.7rem;
+}
+
+.clear-settings-panel[open] .clear-settings::after {
+  content: " ▴";
+}
+
 .clear-settings-panel .clear-settings::-webkit-details-marker {
   display: none;
 }
@@ -1892,7 +1901,13 @@ button.clear-danger:hover {
   border-color: #c0392b;
 }
 
+:root[data-theme="light"] button.clear-danger {
+  color: #dc2626;
+  border-color: color-mix(in srgb, #dc2626 35%, var(--line));
+}
+
 :root[data-theme="light"] button.clear-danger:hover {
+  color: #fff;
   background: #dc2626;
   border-color: #dc2626;
 }
