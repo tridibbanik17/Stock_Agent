@@ -841,9 +841,9 @@ button.remove:hover {
 /* Watchlist table */
 .list-head {
   display: grid;
-  grid-template-columns: 58px 1fr 1fr 58px;
+  grid-template-columns: minmax(72px, auto) 1fr 1fr 58px;
   gap: 6px;
-  padding: 0 4px;
+  padding: 0 11px;
   font-size: 0.64rem;
   color: #6f8092;
   text-transform: uppercase;
