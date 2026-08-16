@@ -891,7 +891,7 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     shares.min = "0";
     shares.step = "0.0001";
     shares.inputMode = "decimal";
-    shares.placeholder = "0";
+    shares.placeholder = "Shares";
     shares.title = "Number of shares owned (private)";
     shares.setAttribute("aria-label", `${ticker} number of shares owned`);
     shares.dataset.ticker = ticker;
@@ -904,7 +904,7 @@ function renderWatchlist(watchlist, holdings = {}, quotes = quoteCache) {
     buyPrice.min = "0";
     buyPrice.step = "0.01";
     buyPrice.inputMode = "decimal";
-    buyPrice.placeholder = "0.00";
+    buyPrice.placeholder = "Avg price";
     buyPrice.title = "Average buy price (private)";
     buyPrice.setAttribute("aria-label", `${ticker} average buy price`);
     buyPrice.dataset.ticker = ticker;
