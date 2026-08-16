@@ -218,9 +218,6 @@ body {
 }
 
 .portfolio-summary {
-  position: sticky;
-  top: 0;
-  z-index: 6;
   display: grid;
   gap: 4px;
   padding: 8px 10px;
@@ -1664,12 +1661,6 @@ button.preset-chip.is-active {
 
 /* Portfolio summary adapts to wider panel */
 @media (min-width: 540px) {
-  .portfolio-summary {
-    position: sticky;
-    top: 0;
-    z-index: 6;
-  }
-
   .portfolio-summary-row {
     font-size: 0.76rem;
   }
