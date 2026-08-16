@@ -1,23 +1,65 @@
 # Stock Agent
 
-Privacy-first Chrome extension for retail traders: keep a watchlist, see live grades, and get scheduled email reports. Holdings and API keys stay on your device. The cloud stores delivery preferences only.
+**Privacy-first Chrome extension that grades your watchlist with deterministic rules — no AI, no black box.** Keep holdings on-device, see live STRONG BUY / HOLD / AVOID grades, and get scheduled email digests. The cloud stores only your email, tickers, and schedule.
 
-## What it does
+[![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest_V3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
 
-- Watchlist dashboard in a Chrome popup (up to 25 tickers)
-- Private lots (shares, average buy) stored only in `chrome.storage.local`
-- Live quotes and grades via yfinance (`STRONG BUY` / `HOLD` / `AVOID`)
-- Optional Gemini BYOK for AI checks (key never uploaded to our servers)
-- Email digests on your schedule (days, times, timezone)
-- Cloud sync for email + tickers + schedule only (Supabase)
+---
 
-## Privacy boundary
+## The Problem
 
-| Data | Where it lives | Network |
-|------|----------------|---------|
-| Shares, buy prices | Extension local storage | Never leaves the device |
-| Gemini API key | Extension local storage | Client → Google only |
-| Email, watchlist, schedule | Local cache + Supabase | Extension → FastAPI → Supabase |
+Retail traders get flooded with noisy stock tips, but sharing a portfolio with a random AI SaaS feels unsafe. Most tools want your holdings, your broker login, or opaque "AI picks" you can't verify.
+
+## The Solution
+
+Stock Agent delivers **research-grade watchlist grades without uploading holdings or API keys**:
+
+- **Privacy-first architecture** — share counts and buy prices never leave `chrome.storage.local`
+- **Transparent grading** — every score is fully explainable from 5 financial metrics (D/E, PEG, ROE, 200-SMA, RSI) + news risk flags
+- **No AI in the scoring loop** — deterministic rules mean same data = same grade, every time
+- **Scheduled email digests** — automated reports on your days/times with one-click unsubscribe
+- **Multi-region** — supports US (NASDAQ/NYSE), Canada (TSX), and India (NSE/BSE) with sector-aware thresholds
+
+## Features
+
+| Feature | Details |
+|---------|---------|
+| Watchlist dashboard | Up to 25 tickers with live prices and grades in a Chrome popup |
+| Private portfolio tracking | Shares + avg buy stored locally, P&L calculated on-device |
+| Context-aware grading | Sector-specific thresholds (banks ≠ tech ≠ crypto proxies) |
+| News risk scoring | Tiered severity (fraud = -2, lawsuit = -1, guidance cut = informational) |
+| Email scheduler | Pick days + times, auto-detect timezone, daily cap prevents abuse |
+| Optional AI explain | BYOK Gemini key explains grades in plain English (browser → Google only) |
+| Light/dark theme | Toggle with smooth transitions |
+
+## Privacy Boundary
+
+| Data | Where it lives | Leaves device? |
+|------|----------------|:---:|
+| Shares, buy prices | Extension local storage | ❌ Never |
+| Gemini API key | Extension local storage | ❌ (goes to Google directly) |
+| Email, watchlist, schedule | Local cache + Supabase | ✅ Required for delivery |
+
+## How Grades Work (No AI)
+
+Each stock starts at 0 and earns up to 5 points:
+
+| Factor | +1 if | −1 if |
+|--------|-------|-------|
+| **D/E** (Debt-to-Equity) | Below sector threshold | — |
+| **PEG** (Price/Earnings-to-Growth) | Below threshold (1.0 standard, 1.5 tech) | — |
+| **ROE** (Return on Equity) | Above 15% (or 8–12% for utilities/banks) | — |
+| **200-SMA** (Simple Moving Average) | Price above 200-day SMA | — |
+| **RSI** (Relative Strength Index) | Below 35 (oversold) | ≥ 70 (overbought) |
+| **News risk** | — | Severe: −2, Moderate: −1 |
+
+**4–5 = STRONG BUY · 3 = HOLD · 0–2 = AVOID**
+
+Thresholds adjust by sector (banks aren't penalized for structural leverage, ETFs skip corporate ratios, cyclicals have lenient ROE during commodity troughs).
+
+Full methodology: [docs/GRADING_ENGINE.md](docs/GRADING_ENGINE.md)
 
 ## Stack
 

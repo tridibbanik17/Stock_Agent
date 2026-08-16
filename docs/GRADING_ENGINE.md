@@ -21,7 +21,7 @@ Each factor contributes +1 when healthy, 0 when missing/neutral, and may subtrac
 | 2 | **PEG ratio** | Valuation vs growth | yfinance (ADR peer fallback for India) |
 | 3 | **ROE trend** | Profitability and direction | yfinance (Screener.in fallback for India) |
 | 4 | **200-day SMA** | Long-term price trend | yfinance history |
-| 5 | **RSI (14-day)** | Momentum / overbought/oversold | yfinance history |
+| 5 | **RSI (14-day)** | Momentum / overbought/oversold (+1 if <35, −1 if ≥70) | yfinance history |
 
 **Bonus/penalty:** News headlines with risk keywords are scored by severity tier — severe (fraud, SEC, bankruptcy) = -2 each, moderate (lawsuit, downgrade, layoffs) = -1 each, mild (guidance cut) = informational only. Total news penalty capped at -3.
 
@@ -115,7 +115,7 @@ Same for all asset classes (except index_etf which uses only these):
 |---|---|---|---|
 | Price > 200-day SMA | Yes | No penalty, just a note | Shorter SMA used when listing history < 200 days |
 | RSI < 35 | Yes (selling fatigue) | — | Mean-reversion opportunity |
-| RSI > 70 | — | Yes (overbought) | Risk of pullback |
+| RSI ≥ 70 | — | Yes (overbought) | Risk of pullback |
 
 ### Index / ETF Scoring
 

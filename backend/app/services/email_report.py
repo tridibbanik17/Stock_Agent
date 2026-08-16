@@ -103,7 +103,7 @@ def _metric_glossary() -> list[str]:
         "    +1 if price is above the 200-day SMA (uptrend).",
         "",
         "  RSI (Relative Strength Index) — momentum oscillator (0-100).",
-        "    +1 if below 35 (oversold). -1 if above 70 (overbought).",
+        "    +1 if below 35 (oversold). -1 if 70 or above (overbought).",
         "",
         "  News risk: tiered by severity.",
         "    Severe (fraud, bankruptcy, delisting, SEC): -2 each, cap -3.",
@@ -552,7 +552,7 @@ def format_report_html(
           <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">PEG</td><td style="padding:4px 8px;">Price/Earnings-to-Growth. +1 if below 1.0 (or 1.5 for growth/tech). Higher = overpaying for growth.</td></tr>
           <tr><td style="padding:4px 8px;font-weight:700;">ROE</td><td style="padding:4px 8px;">Return on Equity (profit efficiency). +1 if above 15%. Declining trend triggers a warning.</td></tr>
           <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">200-SMA</td><td style="padding:4px 8px;">200-day simple moving average. +1 if price is above it (uptrend).</td></tr>
-          <tr><td style="padding:4px 8px;font-weight:700;">RSI</td><td style="padding:4px 8px;">Relative Strength Index (0–100). +1 if below 35 (oversold). &minus;1 if above 70 (overbought).</td></tr>
+          <tr><td style="padding:4px 8px;font-weight:700;">RSI</td><td style="padding:4px 8px;">Relative Strength Index (0–100). +1 if below 35 (oversold). &minus;1 if 70 or above (overbought).</td></tr>
           <tr style="background:#f8fafc;"><td style="padding:4px 8px;font-weight:700;">News</td><td style="padding:4px 8px;">Tiered by severity: severe (fraud, bankruptcy, SEC) = &minus;2 each (cap &minus;3). Moderate (lawsuit, downgrade, layoffs) = &minus;1 each (cap &minus;2). Mild (guidance cut) = no penalty. Positive news is not scored.</td></tr>
         </table>
         <p style="margin:8px 0 0;font-size:12px;color:#64748b;line-height:1.55;">
