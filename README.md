@@ -66,12 +66,11 @@ Full methodology: [docs/GRADING_ENGINE.md](docs/GRADING_ENGINE.md)
 | Layer | Tech |
 |-------|------|
 | Extension | Manifest V3, HTML / CSS / JavaScript |
-| API | Python, FastAPI, Pydantic |
+| API | Python, FastAPI, Pydantic — hosted on Heroku (Docker) — see [docs/DEPLOY.md](docs/DEPLOY.md) |
 | Database | Supabase (PostgreSQL), RLS recommended |
 | Market data | yfinance |
 | Email | Resend (dry-run if no API key) |
 | Cron | AWS EventBridge + Lambda (every 5 minutes) → hosted `/api/internal/dispatch-due` |
-| Hosted API | Heroku (Docker) — see [docs/DEPLOY.md](docs/DEPLOY.md) |
 
 ## Data flow and field reference
 
