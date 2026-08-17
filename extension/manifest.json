@@ -38,6 +38,7 @@
     }
   },
   "host_permissions": [
+    "https://api.stockagent.app/*",
     "https://*.herokuapp.com/*",
     "https://generativelanguage.googleapis.com/*"
   ],

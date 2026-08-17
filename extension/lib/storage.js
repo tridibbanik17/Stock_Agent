@@ -610,7 +610,7 @@ export async function getCachedQuotesFetchedAt() {
  */
 export async function setCachedQuotes(quotes) {
   // Only persist quotes with complete grade data (aboveSma200 resolved).
-  // Incomplete fetches (Render cold start, yfinance timeout) should NOT
+  // Incomplete fetches (yfinance timeout) should NOT
   // overwrite previously complete cached grades — prevents grade flicker
   // between popup opens (HOLD on stale cache → STRONG BUY on fresh fetch).
   const existing = await getCachedQuotes();

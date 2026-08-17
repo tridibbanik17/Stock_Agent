@@ -4,12 +4,11 @@ The Chrome extension talks to FastAPI for quotes, subscribe, and unsubscribe.
 Cron (GitHub Actions) talks to Supabase + Resend directly; it needs `PUBLIC_API_BASE_URL`
 so email unsubscribe links point at the **same** public API.
 
-## Option A — Render (recommended free tier)
+## Option A — Heroku (recommended)
 
-1. Push this repo to GitHub (if it isn’t already).
-2. Go to [https://render.com](https://render.com) → **New** → **Blueprint**.
-3. Connect the repo. Render reads root `render.yaml`.
-4. Fill env vars when prompted (same values as `backend/.env`):
+1. Push this repo to GitHub (if it isn't already).
+2. Create a new Heroku app (Docker deploy via `heroku.yml` or Container Registry).
+3. Set env vars (same values as `backend/.env`):
 
 | Env var | Notes |
 |---------|--------|
@@ -17,22 +16,20 @@ so email unsubscribe links point at the **same** public API.
 | `SUPABASE_SECRET_KEY` | Server / service_role key |
 | `RESEND_API_KEY` | Optional; dry-run without it |
 | `REPORT_FROM_EMAIL` | Verified Resend from-address |
-| `PUBLIC_API_BASE_URL` | Set **after** first deploy to your `https://….onrender.com` URL |
+| `PUBLIC_API_BASE_URL` | Your Heroku HTTPS URL, e.g. `https://stock-agent-api-2aee861fcc19.herokuapp.com` |
 | `DISPATCH_SECRET` | Shared secret for `POST /api/internal/dispatch-due` |
-| `TRUST_PROXY` | Already `true` in the blueprint |
+| `TRUST_PROXY` | `true` |
 
-5. Deploy. Open `https://YOUR-SERVICE.onrender.com/health` — expect `{"status":"ok",…}`.
-6. Wire the extension:
+4. Deploy. Open `https://YOUR-APP.herokuapp.com/health` — expect `{"status":"ok",…}`.
+5. Wire the extension:
    - Edit `extension/lib/config.js`
    - Set `PROD_API_BASE` to that HTTPS URL
    - Set `USE_LOCAL_API = false`
    - Reload the unpacked extension at `chrome://extensions`
-7. GitHub Actions → secrets:
+6. GitHub Actions → secrets:
    - `PUBLIC_API_BASE_URL` = same HTTPS URL (no trailing slash)
-   - `DISPATCH_SECRET` = same value as Render `DISPATCH_SECRET`
+   - `DISPATCH_SECRET` = same value as Heroku env `DISPATCH_SECRET`
    The workflow pings `POST /api/internal/dispatch-due` every 5 minutes (hybrid B).
-
-**Free plan note:** Render spins down idle free services. The first request after sleep can take ~30–60s; the extension error message mentions this.
 
 ## Option B — Docker locally (smoke-test the image)
 
@@ -58,7 +55,7 @@ Set the same env vars as above, with `TRUST_PROXY=true` and `PUBLIC_API_BASE_URL
 - [ ] Extension Refresh loads live quotes (not localhost)
 - [ ] Save & Subscribe succeeds
 - [ ] Unsubscribe links in email use the public host
-- [ ] Render env: `DISPATCH_SECRET`, Supabase, Resend, `PUBLIC_API_BASE_URL`
-- [ ] Actions secrets: `PUBLIC_API_BASE_URL`, `DISPATCH_SECRET` (same secret as Render)
+- [ ] Heroku env: `DISPATCH_SECRET`, Supabase, Resend, `PUBLIC_API_BASE_URL`
+- [ ] Actions secrets: `PUBLIC_API_BASE_URL`, `DISPATCH_SECRET` (same secret as Heroku)
 - [ ] Manual **Scheduled report dispatch** run succeeds (idle `matched: 0` is OK)
 - [ ] Supabase migrations `004_add_delivery_logs.sql` and `006_add_daily_send_cap.sql` applied
