@@ -71,7 +71,7 @@ Full methodology: [docs/GRADING_ENGINE.md](docs/GRADING_ENGINE.md)
 | Market data | yfinance |
 | Email | Resend (dry-run if no API key) |
 | Cron | GitHub Actions every ~5 minutes → hosted `/api/internal/dispatch-due` |
-| Hosted API | Render (Docker) — see [docs/DEPLOY.md](docs/DEPLOY.md) |
+| Hosted API | Heroku (Docker) — see [docs/DEPLOY.md](docs/DEPLOY.md) |
 
 ## Data flow and field reference
 
@@ -131,10 +131,10 @@ For hybrid B wake-ups, add under **Settings → Secrets and variables → Action
 
 | Secret | Purpose |
 |--------|---------|
-| `PUBLIC_API_BASE_URL` | Render HTTPS origin, e.g. `https://stock-agent-api-m06f.onrender.com` (no trailing slash) |
-| `DISPATCH_SECRET` | Same value as Render env `DISPATCH_SECRET` |
+| `PUBLIC_API_BASE_URL` | Heroku HTTPS origin, e.g. `https://stock-agent-api-2aee861fcc19.herokuapp.com` (no trailing slash) |
+| `DISPATCH_SECRET` | Same value as Heroku env `DISPATCH_SECRET` |
 
-Supabase / Resend stay on **Render** only (the API does the real send).
+Supabase / Resend stay on **Heroku** only (the API does the real send).
 
 Workflow: `.github/workflows/cron-dispatch.yml` (every 5 minutes + manual run)  
 Manual run: **Actions → Scheduled report dispatch → Run workflow**
