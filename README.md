@@ -6,6 +6,8 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
 
+▶️ **[Watch the Demo (4:50)](https://www.youtube.com/watch?v=4ZP0hkDd_Dk)**
+
 ---
 
 ## The Problem
