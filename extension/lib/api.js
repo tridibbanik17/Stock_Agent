@@ -24,7 +24,7 @@ async function request(path, options = {}) {
       `Cannot reach Stock Agent API at ${API_BASE}. ` +
         (API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1")
           ? "Is the FastAPI server running locally?"
-          : "Is the hosted API awake? Free Render services sleep after idle.")
+          : "Is the hosted API awake?")
     );
     error.cause = networkError;
     throw error;
