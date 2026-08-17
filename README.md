@@ -176,3 +176,7 @@ Never commit `.env`. Never put secret keys in the extension.
 ## License
 
 Private / unpublished unless you add a license file.
+
+## Contact
+
+Tridib Banik — tridib.perfect@gmail.com
