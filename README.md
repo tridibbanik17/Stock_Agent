@@ -70,7 +70,7 @@ Full methodology: [docs/GRADING_ENGINE.md](docs/GRADING_ENGINE.md)
 | Database | Supabase (PostgreSQL), RLS recommended |
 | Market data | yfinance |
 | Email | Resend (dry-run if no API key) |
-| Cron | GitHub Actions every ~5 minutes → hosted `/api/internal/dispatch-due` |
+| Cron | AWS EventBridge + Lambda (every 5 minutes) → hosted `/api/internal/dispatch-due` |
 | Hosted API | Heroku (Docker) — see [docs/DEPLOY.md](docs/DEPLOY.md) |
 
 ## Data flow and field reference
@@ -125,19 +125,20 @@ For real users, host FastAPI and flip to production — see **[docs/DEPLOY.md](d
 python backend/worker/cron_dispatch.py
 ```
 
-## GitHub Actions secrets
+## Cron dispatch
 
-For hybrid B wake-ups, add under **Settings → Secrets and variables → Actions**:
+Email dispatch is handled by **AWS EventBridge + Lambda** (every 5 minutes, punctual). The Lambda `POST`s `/api/internal/dispatch-due` with `X-Dispatch-Secret`.
 
-| Secret | Purpose |
-|--------|---------|
+Required env vars on the Lambda / Heroku:
+
+| Variable | Purpose |
+|----------|---------|
 | `PUBLIC_API_BASE_URL` | Heroku HTTPS origin, e.g. `https://stock-agent-api-2aee861fcc19.herokuapp.com` (no trailing slash) |
-| `DISPATCH_SECRET` | Same value as Heroku env `DISPATCH_SECRET` |
+| `DISPATCH_SECRET` | Shared secret between Lambda and Heroku |
 
 Supabase / Resend stay on **Heroku** only (the API does the real send).
 
-Workflow: `.github/workflows/cron-dispatch.yml` (every 5 minutes + manual run)  
-Manual run: **Actions → Scheduled report dispatch → Run workflow**
+The GitHub Actions workflow (`.github/workflows/cron-dispatch.yml`) is **disabled** — kept for reference / fallback only.
 
 ## Extension versioning
 
