@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 MAX_WATCHLIST = 25
 # Max distinct HH:MM slots per day (× up to 7 days ⇒ ≤ 14 emails/week).
-MAX_SEND_TIMES = 10
+MAX_SEND_TIMES = 2
 # Covers longest Indian tickers e.g. ADANIENTERPRISES.NS (19 chars),
 # BANKOFBARODA.BO (15 chars), 6-digit BSE numeric codes e.g. 500325.BO (9 chars),
 # and standard US/CA tickers (max ~12 chars).
