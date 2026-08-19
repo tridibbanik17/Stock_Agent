@@ -119,7 +119,7 @@ We may update this policy from time to time. Changes will be reflected in the "L
 
 For privacy questions, data access requests, or deletion requests:
 
-**Email:** tbanik@magentacapital.ca
+**Email:** tridib.perfect@gmail.com
 
 ---
 
